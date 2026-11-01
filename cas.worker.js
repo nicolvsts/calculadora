@@ -1,0 +1,926 @@
+// cas.worker.js
+// Web Worker dedicado para el motor simbólico Giac (giac.wasm) con parser 2D MathPrint (LaTeX <-> Giac) y catálogo TI-Nspire CX CAS
+
+let caseval = null;
+let isReady = false;
+let lastAns = '0';
+let lastAnsLatex = '0';
+let currentAngleMode = 'RAD';
+const userVariables = new Map();
+
+self.Module = {
+  locateFile: (path) => {
+    if (path.endsWith('.wasm')) {
+      return './giac.wasm';
+    }
+    return path;
+  },
+  print: (text) => {
+    console.debug('[Giac stdout]:', text);
+  },
+  printErr: (text) => {
+    console.warn('[Giac stderr]:', text);
+  },
+  onRuntimeInitialized: () => {
+    try {
+      const rawCaseval = self.Module.cwrap('caseval', 'string', ['string']);
+      caseval = (cmd) => rawCaseval(cmd.replace(/%22/g, '"'));
+      bootstrapTIEnvironment();
+      isReady = true;
+      self.postMessage({
+        type: 'READY',
+        engine: 'Giac/Xcas WASM (TI-Nspire CAS Mode)',
+        variables: getVariablesSnapshot()
+      });
+    } catch (err) {
+      self.postMessage({
+        type: 'ERROR',
+        error: 'No se pudo enlazar caseval en giac.wasm: ' + (err.message || err)
+      });
+    }
+  }
+};
+
+try {
+  importScripts('./giac.js?v=5');
+} catch (err) {
+  self.postMessage({
+    type: 'ERROR',
+    error: 'Error al cargar giac.js en el Web Worker: ' + (err.message || err)
+  });
+}
+
+function bootstrapTIEnvironment() {
+  caseval(`angle_radian:=${currentAngleMode === 'RAD' ? 1 : 0}`);
+  caseval('approx_mode:=0');
+}
+
+/**
+ * Extrae el contenido de un bloque delimitado balanceado (por ejemplo `{...}`, `[...]`, `(...)`)
+ * comenzando en `openIdx` (donde `str[openIdx]` es el carácter de apertura).
+ */
+function extractBalanced(str, openIdx, openChar = '{', closeChar = '}') {
+  if (str[openIdx] !== openChar) return null;
+  let depth = 1;
+  let i = openIdx + 1;
+  while (i < str.length && depth > 0) {
+    if (str[i] === '\\') {
+      i += 2;
+      continue;
+    }
+    if (str[i] === openChar) depth++;
+    else if (str[i] === closeChar) depth--;
+    i++;
+  }
+  if (depth !== 0) return null;
+  return {
+    content: str.slice(openIdx + 1, i - 1),
+    endIdx: i
+  };
+}
+
+/**
+ * Salta espacios en blanco desde `idx`
+ */
+function skipSpaces(str, idx) {
+  while (idx < str.length && /\s/.test(str[idx])) idx++;
+  return idx;
+}
+
+/**
+ * Extrae un argumento TeX comenzando en `idx` (saltando espacios iniciales).
+ * Soporta tanto bloques con llaves `{...}` como argumentos abreviados de un solo token
+ * que MathLive genera sin llaves (p. ej. `\frac99`, `\frac66`, `\frac1{x+1}`, `\sqrt9`, `\frac\pi2`).
+ */
+function extractTexArg(str, idx) {
+  const cur = skipSpaces(str, idx);
+  if (cur >= str.length) return null;
+
+  if (str[cur] === '{') {
+    return extractBalanced(str, cur, '{', '}');
+  }
+
+  if (str[cur] === '\\') {
+    let cmdEnd = cur + 1;
+    if (cmdEnd < str.length && /[a-zA-Z]/.test(str[cmdEnd])) {
+      while (cmdEnd < str.length && /[a-zA-Z]/.test(str[cmdEnd])) cmdEnd++;
+    } else if (cmdEnd < str.length) {
+      cmdEnd++;
+    }
+    const cmdName = str.slice(cur, cmdEnd);
+    if (cmdName === '\\frac' || cmdName === '\\dfrac' || cmdName === '\\tfrac' || cmdName === '\\cfrac') {
+      const arg1 = extractTexArg(str, cmdEnd);
+      if (!arg1) return { content: cmdName, endIdx: cmdEnd };
+      const arg2 = extractTexArg(str, arg1.endIdx);
+      if (!arg2) return { content: str.slice(cur, arg1.endIdx), endIdx: arg1.endIdx };
+      return { content: str.slice(cur, arg2.endIdx), endIdx: arg2.endIdx };
+    }
+    if (cmdName === '\\sqrt') {
+      let nextPos = skipSpaces(str, cmdEnd);
+      if (str[nextPos] === '[') {
+        const opt = extractBalanced(str, nextPos, '[', ']');
+        if (opt) nextPos = opt.endIdx;
+      }
+      const rad = extractTexArg(str, nextPos);
+      if (rad) return { content: str.slice(cur, rad.endIdx), endIdx: rad.endIdx };
+    }
+    return { content: cmdName, endIdx: cmdEnd };
+  }
+
+  return {
+    content: str[cur],
+    endIdx: cur + 1
+  };
+}
+
+/**
+ * Convierte LaTeX 2D interactivo (procedente de MathLive <math-field>) a sintaxis algebraica Giac/TI-Nspire.
+ * Soporta fracciones anidadas, integrales definidas/indefinidas, derivadas de orden n, raíces n-ésimas,
+ * sumatorias, productorias, límites, logaritmos en base b y matrices 2D.
+ */
+function latexToGiac(rawLatex) {
+  if (!rawLatex) return '';
+  let s = rawLatex.trim();
+
+  // Detectar si quedaron cajas de plantilla vacías (\placeholder{})
+  if (/\\placeholder(?:\[[^\]]*\])?\{\s*\}/.test(s)) {
+    throw new Error('Completa todos los recuadros vacíos (□) de la plantilla.');
+  }
+
+  // desenvolver \placeholder{contenido}
+  while (s.includes('\\placeholder')) {
+    const idx = s.indexOf('\\placeholder');
+    let cur = idx + '\\placeholder'.length;
+    cur = skipSpaces(s, cur);
+    if (s[cur] === '[') {
+      const opt = extractBalanced(s, cur, '[', ']');
+      if (opt) cur = opt.endIdx;
+    }
+    cur = skipSpaces(s, cur);
+    if (s[cur] === '{') {
+      const br = extractBalanced(s, cur, '{', '}');
+      if (br) {
+        s = s.slice(0, idx) + br.content + s.slice(br.endIdx);
+        continue;
+      }
+    }
+    break;
+  }
+
+  // Limpiar comandos de estilo de MathLive (\mathrm, \text, \operatorname, \left, \right, \, \: \; \!)
+  const unwrapCommands = ['\\mathrm', '\\text', '\\operatorname', '\\mathbf', '\\mathit'];
+  for (const cmd of unwrapCommands) {
+    while (s.includes(cmd)) {
+      const idx = s.indexOf(cmd);
+      const cur = skipSpaces(s, idx + cmd.length);
+      if (s[cur] === '{') {
+        const br = extractBalanced(s, cur, '{', '}');
+        if (br) {
+          s = s.slice(0, idx) + br.content + s.slice(br.endIdx);
+          continue;
+        }
+      }
+      s = s.slice(0, idx) + s.slice(idx + cmd.length);
+    }
+  }
+
+  // Matrices 2D: \begin{bmatrix} a & b \\ c & d \end{bmatrix}
+  s = s.replace(/\\begin\{(?:b|p|v)?matrix\}([\s\S]*?)\\end\{(?:b|p|v)?matrix\}/g, (_, body) => {
+    const rows = body
+      .split(/\\\\/)
+      .map((r) => r.trim())
+      .filter(Boolean)
+      .map((rowStr) => {
+        const cols = rowStr.split('&').map((c) => latexToGiac(c.trim()));
+        return `[${cols.join(', ')}]`;
+      });
+    return `[${rows.join(', ')}]`;
+  });
+
+  // Valor absoluto \left| ... \right|
+  while (s.includes('\\left|')) {
+    const start = s.indexOf('\\left|');
+    const end = s.indexOf('\\right|', start + 6);
+    if (end !== -1) {
+      const inner = latexToGiac(s.slice(start + 6, end));
+      s = s.slice(0, start) + `abs(${inner})` + s.slice(end + 7);
+    } else {
+      break;
+    }
+  }
+
+  s = s
+    .replace(/\\(?:d|t|c)frac\b/g, '\\frac')
+    .replace(/\\left\s*\(/g, '(')
+    .replace(/\\right\s*\)/g, ')')
+    .replace(/\\left\s*\[/g, '[')
+    .replace(/\\right\s*\]/g, ']')
+    .replace(/\\left\s*\\\{/g, '[')
+    .replace(/\\right\s*\\\}/g, ']')
+    .replace(/\\,/g, ' ')
+    .replace(/\\:/g, ' ')
+    .replace(/\\;/g, ' ')
+    .replace(/\\!/g, '')
+    .replace(/\\ /g, ' ');
+
+  // Funciones trigonométricas inversas antes de procesar exponentes
+  s = s
+    .replace(/\\sin\s*\^\s*\{-1\}/g, 'asin')
+    .replace(/\\cos\s*\^\s*\{-1\}/g, 'acos')
+    .replace(/\\tan\s*\^\s*\{-1\}/g, 'atan')
+    .replace(/\\csc\s*\^\s*\{-1\}/g, 'acsc')
+    .replace(/\\sec\s*\^\s*\{-1\}/g, 'asec')
+    .replace(/\\cot\s*\^\s*\{-1\}/g, 'acot')
+    .replace(/\\arcsin/g, 'asin')
+    .replace(/\\arccos/g, 'acos')
+    .replace(/\\arctan/g, 'atan')
+    .replace(/\\sin/g, 'sin')
+    .replace(/\\cos/g, 'cos')
+    .replace(/\\tan/g, 'tan')
+    .replace(/\\csc/g, 'csc')
+    .replace(/\\sec/g, 'sec')
+    .replace(/\\cot/g, 'cot')
+    .replace(/\\ln/g, 'ln');
+
+  // Logaritmo con base: \log_{b}(x) o \log_{b} x
+  while (s.includes('\\log')) {
+    const idx = s.indexOf('\\log');
+    let cur = skipSpaces(s, idx + 4);
+    let baseStr = '10';
+    if (s[cur] === '_') {
+      const b = extractTexArg(s, cur + 1);
+      if (b) {
+        baseStr = latexToGiac(b.content);
+        cur = b.endIdx;
+      }
+    }
+    cur = skipSpaces(s, cur);
+    let argStr = '';
+    if (s[cur] === '(') {
+      const a = extractBalanced(s, cur, '(', ')');
+      if (a) {
+        argStr = latexToGiac(a.content);
+        cur = a.endIdx;
+      }
+    } else {
+      const a = extractTexArg(s, cur);
+      if (a) {
+        argStr = latexToGiac(a.content);
+        cur = a.endIdx;
+      }
+    }
+    s = s.slice(0, idx) + `log(${argStr}, ${baseStr})` + s.slice(cur);
+  }
+
+  // Sumatoria \sum_{k=a}^{b}(expr) y Productoria \prod_{k=a}^{b}(expr)
+  for (const [texCmd, giacFn] of [['\\sum', 'sum'], ['\\prod', 'product']]) {
+    while (s.includes(texCmd)) {
+      const idx = s.indexOf(texCmd);
+      let cur = skipSpaces(s, idx + texCmd.length);
+      let lowPart = '';
+      let upPart = '';
+      for (let k = 0; k < 2; k++) {
+        cur = skipSpaces(s, cur);
+        if (s[cur] === '_') {
+          const b = extractTexArg(s, cur + 1);
+          if (b) { lowPart = b.content; cur = b.endIdx; }
+        } else if (s[cur] === '^') {
+          const b = extractTexArg(s, cur + 1);
+          if (b) { upPart = b.content; cur = b.endIdx; }
+        }
+      }
+      cur = skipSpaces(s, cur);
+      let bodyStr = '';
+      if (s[cur] === '(') {
+        const a = extractBalanced(s, cur, '(', ')');
+        if (a) { bodyStr = a.content; cur = a.endIdx; }
+      } else if (s[cur] === '{') {
+        const a = extractBalanced(s, cur, '{', '}');
+        if (a) { bodyStr = a.content; cur = a.endIdx; }
+      } else {
+        bodyStr = s.slice(cur);
+        cur = s.length;
+      }
+      const eqSplit = lowPart.split('=');
+      const vName = latexToGiac(eqSplit[0] || 'k');
+      const vLow = latexToGiac(eqSplit[1] || '1');
+      const vUp = latexToGiac(upPart || 'n');
+      const vBody = latexToGiac(bodyStr);
+      s = s.slice(0, idx) + `${giacFn}(${vBody}, ${vName}, ${vLow}, ${vUp})` + s.slice(cur);
+    }
+  }
+
+  // Límite \lim_{x \to a}(expr)
+  while (s.includes('\\lim')) {
+    const idx = s.indexOf('\\lim');
+    let cur = skipSpaces(s, idx + 4);
+    let subContent = '';
+    if (s[cur] === '_') {
+      const b = extractTexArg(s, cur + 1);
+      if (b) { subContent = b.content; cur = b.endIdx; }
+    }
+    cur = skipSpaces(s, cur);
+    let bodyStr = '';
+    if (s[cur] === '(') {
+      const a = extractBalanced(s, cur, '(', ')');
+      if (a) { bodyStr = a.content; cur = a.endIdx; }
+    } else if (s[cur] === '{') {
+      const a = extractBalanced(s, cur, '{', '}');
+      if (a) { bodyStr = a.content; cur = a.endIdx; }
+    } else {
+      bodyStr = s.slice(cur);
+      cur = s.length;
+    }
+    const toSplit = subContent.split(/\\to|\\rightarrow|->/);
+    const vName = latexToGiac(toSplit[0] || 'x');
+    const vPt = latexToGiac(toSplit[1] || '0');
+    const vBody = latexToGiac(bodyStr);
+    s = s.slice(0, idx) + `limit(${vBody}, ${vName}, ${vPt})` + s.slice(cur);
+  }
+
+  // Integrales definidas e indefinidas: \int_{a}^{b} expr dvar o \int expr dvar
+  while (s.includes('\\int')) {
+    const idx = s.indexOf('\\int');
+    let cur = skipSpaces(s, idx + 4);
+    let lowStr = null;
+    let upStr = null;
+    for (let k = 0; k < 2; k++) {
+      cur = skipSpaces(s, cur);
+      if (s[cur] === '_') {
+        const b = extractTexArg(s, cur + 1);
+        if (b) { lowStr = latexToGiac(b.content); cur = b.endIdx; }
+      } else if (s[cur] === '^') {
+        const b = extractTexArg(s, cur + 1);
+        if (b) { upStr = latexToGiac(b.content); cur = b.endIdx; }
+      }
+    }
+    const rest = s.slice(cur);
+    const dMatch = rest.match(/(?:\\differentialD|\bd)\s*\(?([a-zA-Z_][a-zA-Z0-9_]*)\)?/);
+    if (dMatch) {
+      const integrandRaw = rest.slice(0, dMatch.index).trim();
+      const varName = dMatch[1];
+      const afterIdx = cur + dMatch.index + dMatch[0].length;
+      const integrand = latexToGiac(integrandRaw || '1');
+      const giacInt =
+        lowStr !== null && upStr !== null
+          ? `integrate(${integrand}, ${varName}, ${lowStr}, ${upStr})`
+          : `integrate(${integrand}, ${varName})`;
+      s = s.slice(0, idx) + giacInt + s.slice(afterIdx);
+    } else {
+      break;
+    }
+  }
+
+  // Fracciones y Derivadas: \frac{num}{den} o \frac99 (sin llaves en tokens individuales)
+  while (s.includes('\\frac')) {
+    const idx = s.indexOf('\\frac');
+    const numBlock = extractTexArg(s, idx + 5);
+    if (!numBlock) break;
+    const denBlock = extractTexArg(s, numBlock.endIdx);
+    if (!denBlock) break;
+
+    const numRaw = numBlock.content.trim();
+    const denRaw = denBlock.content.trim();
+    const afterFrac = skipSpaces(s, denBlock.endIdx);
+
+    // Comprobar si es plantilla de derivada: \frac{d}{dx}(expr) o \frac{d^{n}}{dx^{n}}(expr)
+    const derivNumMatch = numRaw.match(/^(?:\\differentialD|d)(?:\^\s*\{?(\d+|\w+)\}?)?$/);
+    const derivDenMatch = denRaw.match(/^(?:\\differentialD|d)\s*([a-zA-Z_][a-zA-Z0-9_]*)(?:\^\s*\{?(\d+|\w+)\}?)?$/);
+
+    if (derivNumMatch && derivDenMatch) {
+      const order = derivNumMatch[1] || derivDenMatch[2] || '1';
+      const vName = derivDenMatch[1];
+      let targetExpr = '';
+      let endTarget = afterFrac;
+      if (s[afterFrac] === '(') {
+        const argBlock = extractBalanced(s, afterFrac, '(', ')');
+        if (argBlock) {
+          targetExpr = latexToGiac(argBlock.content);
+          endTarget = argBlock.endIdx;
+        }
+      } else if (s[afterFrac] === '{') {
+        const argBlock = extractBalanced(s, afterFrac, '{', '}');
+        if (argBlock) {
+          targetExpr = latexToGiac(argBlock.content);
+          endTarget = argBlock.endIdx;
+        }
+      } else {
+        targetExpr = latexToGiac(s.slice(afterFrac));
+        endTarget = s.length;
+      }
+      const diffCall = order === '1' ? `diff(${targetExpr}, ${vName})` : `diff(${targetExpr}, ${vName}, ${order})`;
+      s = s.slice(0, idx) + diffCall + s.slice(endTarget);
+    } else {
+      const numGiac = latexToGiac(numRaw);
+      const denGiac = latexToGiac(denRaw);
+      s = s.slice(0, idx) + `((${numGiac})/(${denGiac}))` + s.slice(denBlock.endIdx);
+    }
+  }
+
+  // Raíces cuadradas y n-ésimas: \sqrt[n]{x}, \sqrt{x} o \sqrt9
+  while (s.includes('\\sqrt')) {
+    const idx = s.indexOf('\\sqrt');
+    let cur = skipSpaces(s, idx + 5);
+    let rootIndex = null;
+    if (s[cur] === '[') {
+      const opt = extractBalanced(s, cur, '[', ']');
+      if (opt) {
+        rootIndex = latexToGiac(opt.content);
+        cur = skipSpaces(s, opt.endIdx);
+      }
+    }
+    const radBlock = extractTexArg(s, cur);
+    if (!radBlock) break;
+    const radGiac = latexToGiac(radBlock.content);
+    const replacement = rootIndex ? `((${radGiac})^(1/(${rootIndex})))` : `sqrt(${radGiac})`;
+    s = s.slice(0, idx) + replacement + s.slice(radBlock.endIdx);
+  }
+
+  // Exponentes con llaves o comandos: ^{...} o ^\pi -> ^(...)
+  while (s.includes('^')) {
+    const idx = s.indexOf('^');
+    const cur = skipSpaces(s, idx + 1);
+    if (s[cur] === '{' || s[cur] === '\\') {
+      const expBlock = extractTexArg(s, cur);
+      if (expBlock) {
+        const innerExp = latexToGiac(expBlock.content);
+        s = s.slice(0, idx) + `__POW__(${innerExp})` + s.slice(expBlock.endIdx);
+        continue;
+      }
+    }
+    s = s.slice(0, idx) + '__POW__' + s.slice(idx + 1);
+  }
+  s = s.replace(/__POW__/g, '^');
+
+  // Subíndices _{...} -> _...
+  while (s.includes('_')) {
+    const idx = s.indexOf('_');
+    const cur = skipSpaces(s, idx + 1);
+    if (s[cur] === '{') {
+      const subBlock = extractBalanced(s, cur, '{', '}');
+      if (subBlock) {
+        s = s.slice(0, idx) + '__SUB__' + latexToGiac(subBlock.content) + s.slice(subBlock.endIdx);
+        continue;
+      }
+    }
+    s = s.slice(0, idx) + '__SUB__' + s.slice(idx + 1);
+  }
+  s = s.replace(/__SUB__/g, '_');
+
+  // Bloques residuales entre llaves {a} -> (a)
+  while (s.includes('{')) {
+    const idx = s.indexOf('{');
+    const b = extractBalanced(s, idx, '{', '}');
+    if (!b) break;
+    s = s.slice(0, idx) + `(${latexToGiac(b.content)})` + s.slice(b.endIdx);
+  }
+
+  // Símbolos constantes, operadores relacionales y letras griegas en LaTeX
+  s = s
+    .replace(/\\exponentialE\b/g, 'e')
+    .replace(/\\imaginaryI\b/g, 'i')
+    .replace(/\\pi\b/g, 'pi')
+    .replace(/\\infty\b/g, 'infinity')
+    .replace(/\\alpha\b/g, 'alpha')
+    .replace(/\\beta\b/g, 'beta')
+    .replace(/\\gamma\b/g, 'gamma')
+    .replace(/\\delta\b/g, 'delta')
+    .replace(/\\epsilon\b/g, 'epsilon')
+    .replace(/\\theta\b/g, 'theta')
+    .replace(/\\lambda\b/g, 'lambda')
+    .replace(/\\mu\b/g, 'mu')
+    .replace(/\\rho\b/g, 'rho')
+    .replace(/\\sigma\b/g, 'sigma')
+    .replace(/\\tau\b/g, 'tau')
+    .replace(/\\phi\b/g, 'phi')
+    .replace(/\\omega\b/g, 'omega')
+    .replace(/\\Delta\b/g, 'Delta')
+    .replace(/\\Sigma\b/g, 'Sigma')
+    .replace(/\\Omega\b/g, 'Omega')
+    .replace(/\\cdot/g, '*')
+    .replace(/\\times/g, '*')
+    .replace(/\\div/g, '/')
+    .replace(/\\neq/g, '!=')
+    .replace(/\\le(?:q)?\b/g, '<=')
+    .replace(/\\ge(?:q)?\b/g, '>=')
+    .replace(/\\to\b|\\rightarrow\b/g, '->')
+    .replace(/\\triangleq\b|\\coloneqq\b/g, ':=');
+
+  return s.trim();
+}
+
+function splitTopLevelArgs(argsStr, separator = ',') {
+  const args = [];
+  let current = '';
+  let depth = 0;
+  for (let i = 0; i < argsStr.length; i++) {
+    const ch = argsStr[i];
+    if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth--;
+    if (ch === separator && depth === 0) {
+      args.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim() !== '') args.push(current.trim());
+  return args;
+}
+
+function replaceFunctionCalls(expr, fnName, replacer) {
+  const regex = new RegExp(`\\b${fnName}\\s*\\(`, 'gi');
+  let result = '';
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(expr)) !== null) {
+    result += expr.slice(lastIndex, match.index);
+    const openParenIdx = regex.lastIndex - 1;
+    let depth = 1;
+    let i = openParenIdx + 1;
+    while (i < expr.length && depth > 0) {
+      if (expr[i] === '(') depth++;
+      else if (expr[i] === ')') depth--;
+      i++;
+    }
+    if (depth === 0) {
+      const innerRaw = expr.slice(openParenIdx + 1, i - 1);
+      const innerTranspiled = expandTIFunctions(innerRaw);
+      const args = splitTopLevelArgs(innerTranspiled);
+      result += replacer(args);
+      lastIndex = i;
+      regex.lastIndex = i;
+    } else {
+      result += match[0];
+      lastIndex = regex.lastIndex;
+    }
+  }
+  result += expr.slice(lastIndex);
+  return result;
+}
+
+function expandTIFunctions(input) {
+  let s = input;
+
+  // 1. Menú Número
+  s = replaceFunctionCalls(s, 'surd', (a) => `((${a[0]})^(1/(${a[1]})))`);
+  s = replaceFunctionCalls(s, 'approx', (a) => `evalf(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'propFrac', (a) => `partfrac(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'getNum', (a) => `numer(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'getDenom', (a) => `denom(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'iPart', (a) => `trunc(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'fPart', (a) => `frac(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'ceiling', (a) => `ceil(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'mod', (a) => `irem(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'real', (a) => `re(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'imag', (a) => `im(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'angle', (a) => `arg(${a.join(', ')})`);
+
+  // 2. Menú Álgebra
+  s = replaceFunctionCalls(s, 'cSolve', (a) => `csolve(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'nSolve', (a) => `fsolve(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'cFactor', (a) => `cfactor(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'cZeros', (a) => `cZeros(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'completeSquare', (a) => `canonical_form(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'polyRoots', (a) => `proot(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'polyCoeffs', (a) => `symb2poly(${a.join(', ')})`);
+
+  // 3. Menú Cálculo
+  s = replaceFunctionCalls(s, 'derivative', (a) => `diff(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'integral', (a) => `integrate(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'deSolve', (a) => `desolve(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'impDiff', (a) => `implicit_diff(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'arcLen', (a) => {
+    const [expr, v, low, up] = a;
+    return `integrate(sqrt(1 + diff(${expr}, ${v})^2), ${v}, ${low}, ${up})`;
+  });
+  s = replaceFunctionCalls(s, 'taylor', (a) => {
+    const [expr, v, order, pt = '0'] = a;
+    return `taylor(${expr}, ${v}=${pt}, ${order})`;
+  });
+
+  // 4. Menú Probabilidad y Estadística
+  s = replaceFunctionCalls(s, 'nPr', (a) => `perm(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'nCr', (a) => `comb(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'randInt', (a) => `randint(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'stdDev', (a) => `stddev(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'normPdf', (a) => {
+    const [x, mu = '0', sigma = '1'] = a;
+    return `normald(${mu}, ${sigma}, ${x})`;
+  });
+  s = replaceFunctionCalls(s, 'normCdf', (a) => {
+    const [low, up, mu = '0', sigma = '1'] = a;
+    return `evalf(normald_cdf(${mu}, ${sigma}, ${up}) - normald_cdf(${mu}, ${sigma}, ${low}))`;
+  });
+  s = replaceFunctionCalls(s, 'invNorm', (a) => {
+    const [area, mu = '0', sigma = '1'] = a;
+    return `evalf(normald_icdf(${mu}, ${sigma}, ${area}))`;
+  });
+  s = replaceFunctionCalls(s, 'tPdf', (a) => {
+    const [x, df] = a;
+    return `studentd(${df}, ${x})`;
+  });
+  s = replaceFunctionCalls(s, 'tCdf', (a) => {
+    const [low, up, df] = a;
+    return `evalf(studentd_cdf(${df}, ${up}) - studentd_cdf(${df}, ${low}))`;
+  });
+  s = replaceFunctionCalls(s, 'invT', (a) => {
+    const [area, df] = a;
+    return `evalf(studentd_icdf(${df}, ${area}))`;
+  });
+  s = replaceFunctionCalls(s, 'chi2Pdf', (a) => {
+    const [x, df] = a;
+    return `chisquared(${df}, ${x})`;
+  });
+  s = replaceFunctionCalls(s, 'chi2Cdf', (a) => {
+    const [low, up, df] = a;
+    return `evalf(chisquared_cdf(${df}, ${up}) - chisquared_cdf(${df}, ${low}))`;
+  });
+  s = replaceFunctionCalls(s, 'binomPdf', (a) => {
+    const [n, p, x] = a;
+    return `binomial(${n}, ${x}, ${p})`;
+  });
+  s = replaceFunctionCalls(s, 'binomCdf', (a) => {
+    if (a.length === 3) {
+      const [n, p, up] = a;
+      return `evalf(binomial_cdf(${n}, ${p}, ${up}))`;
+    }
+    const [n, p, low, up] = a;
+    return `evalf(binomial_cdf(${n}, ${p}, ${up}) - binomial_cdf(${n}, ${p}, (${low}) - 1))`;
+  });
+  s = replaceFunctionCalls(s, 'poissPdf', (a) => {
+    const [lambda, x] = a;
+    return `poisson(${lambda}, ${x})`;
+  });
+  s = replaceFunctionCalls(s, 'poissCdf', (a) => {
+    if (a.length === 2) {
+      const [lambda, up] = a;
+      return `evalf(poisson_cdf(${lambda}, ${up}))`;
+    }
+    const [lambda, low, up] = a;
+    return `evalf(poisson_cdf(${lambda}, ${up}) - poisson_cdf(${lambda}, (${low}) - 1))`;
+  });
+
+  // 5. Menú Matriz y Vector
+  s = replaceFunctionCalls(s, 'newMat', (a) => `matrix(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'identity', (a) => `idn(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'transpose', (a) => `tran(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'eigVl', (a) => `egvl(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'eigVc', (a) => `egv(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'crossP', (a) => `cross(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'dotP', (a) => `dot(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'unitV', (a) => `((${a[0]}) / l2norm(${a[0]}))`);
+
+  s = replaceFunctionCalls(s, 'log', (a) => {
+    if (a.length === 2) return `(ln(${a[0]})/ln(${a[1]}))`;
+    return `log10(${a[0]})`;
+  });
+
+  return s;
+}
+
+function transpileTISyntax(rawInput) {
+  // Primero convertir cualquier plantilla LaTeX 2D a expresión algebraica plana
+  let expr = latexToGiac(rawInput).trim().replace(/;+$/, '');
+
+  if (/^ClearAZ$/i.test(expr)) {
+    const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+    return {
+      isDelVar: true,
+      targetVars: letters
+    };
+  }
+
+  const delVarMatch = expr.match(/^DelVar\s+(.+)$/i);
+  if (delVarMatch) {
+    const vars = delVarMatch[1]
+      .split(/[,\s]+/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+    return {
+      isDelVar: true,
+      targetVars: vars
+    };
+  }
+
+  const defineMatch = expr.match(/^Define\s+([^=:]+?)\s*(?::=|=)\s*(.+)$/i);
+  if (defineMatch) {
+    expr = `${defineMatch[1].trim()} := (${defineMatch[2].trim()})`;
+  }
+
+  const stoMatch = expr.match(/^(.+?)\s*(?:->|→|sto->)\s*([a-zA-Z_][a-zA-Z0-9_]*(?:\([^)]*\))?)$/i);
+  if (stoMatch) {
+    expr = `${stoMatch[2].trim()} := (${stoMatch[1].trim()})`;
+  }
+
+  const pipeParts = splitTopLevelArgs(expr, '|');
+  if (pipeParts.length === 2) {
+    const baseExpr = pipeParts[0];
+    const conds = splitTopLevelArgs(pipeParts[1], ',');
+    expr = `subst(${baseExpr}, [${conds.join(',')}])`;
+  }
+
+  expr = expr
+    .replace(/×/g, '*')
+    .replace(/÷/g, '/')
+    .replace(/−/g, '-')
+    .replace(/≠/g, '!=')
+    .replace(/≤/g, '<=')
+    .replace(/≥/g, '>=')
+    .replace(/π/g, 'pi')
+    .replace(/∞/g, 'infinity')
+    .replace(/𝑖/g, 'i')
+    .replace(/√\(([^)]+)\)/g, 'sqrt($1)')
+    .replace(/(\d+(?:\.\d+)?)\s*ᴇ\s*([+-]?\d+)/g, '($1*10^($2))');
+
+  if (currentAngleMode === 'RAD') {
+    expr = expr.replace(/(\d+(?:\.\d+)?|\([^)]+\))\s*°/g, '(($1)*pi/180)');
+  } else {
+    expr = expr.replace(/°/g, '');
+  }
+
+  expr = expr.replace(/\b(?:Ans|ans)\b/g, `(${lastAns})`);
+  expr = expandTIFunctions(expr);
+
+  let assignedSymbol = null;
+  let isFunctionDef = false;
+  const assignMatch = expr.match(/^([a-zA-Z_][a-zA-Z0-9_]*)(\s*\([^)]*\))?\s*:=\s*(.+)$/);
+  if (assignMatch) {
+    const symName = assignMatch[1].trim();
+    const symParams = assignMatch[2] ? assignMatch[2].trim() : '';
+    if (symName.toLowerCase() === 'ans') {
+      throw new Error('Ans es una variable automática de solo lectura.');
+    }
+    assignedSymbol = symName + symParams;
+    isFunctionDef = Boolean(symParams);
+  }
+
+  return {
+    isDelVar: false,
+    assignedSymbol,
+    isFunctionDef,
+    giacExpr: expr
+  };
+}
+
+function giacExprToLatex(exprStr) {
+  if (!exprStr) return '';
+  const rawLatex = caseval(`latex(quote(${exprStr}))`).replace(/;$/, '');
+  let s = rawLatex.trim();
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1);
+  }
+  s = s.replace(/\\left\(\\begin\{array\}/g, '\\left[\\begin{array}');
+  s = s.replace(/\\end\{array\}\\right\)/g, '\\end{array}\\right]');
+  return s.trim();
+}
+
+function getVariablesSnapshot() {
+  const list = [];
+  if (lastAns !== '0') {
+    list.push({ name: 'Ans', value: lastAns, latex: lastAnsLatex });
+  }
+  for (const [name, value] of userVariables.entries()) {
+    list.push({ name, value });
+  }
+  return list;
+}
+
+self.onmessage = (event) => {
+  const { id, type, expr, inputLatex, forceApprox, angleMode } = event.data;
+
+  if (!isReady || !caseval) {
+    self.postMessage({
+      id,
+      status: 'ERROR',
+      inputExpr: expr,
+      inputLatex: inputLatex || expr,
+      error: 'El motor simbólico giac.wasm aún se está inicializando...'
+    });
+    return;
+  }
+
+  if (type === 'SET_ANGLE_MODE') {
+    currentAngleMode = angleMode === 'DEG' ? 'DEG' : 'RAD';
+    const isRad = currentAngleMode === 'RAD' ? 1 : 0;
+    caseval(`angle_radian:=${isRad}`);
+    self.postMessage({ id, status: 'ANGLE_MODE_OK', angleMode: currentAngleMode });
+    return;
+  }
+
+  if (type === 'RESET_NAMESPACE') {
+    caseval('restart');
+    userVariables.clear();
+    lastAns = '0';
+    lastAnsLatex = '0';
+    bootstrapTIEnvironment();
+    self.postMessage({
+      id,
+      status: 'RESET_OK',
+      variables: getVariablesSnapshot()
+    });
+    return;
+  }
+
+  if (type === 'EVAL') {
+    try {
+      const { isDelVar, targetVars, assignedSymbol, isFunctionDef, giacExpr } = transpileTISyntax(expr);
+
+      if (isDelVar) {
+        for (const v of targetVars) {
+          caseval(`purge(${v})`);
+          userVariables.delete(v);
+          for (const key of userVariables.keys()) {
+            if (key.startsWith(v + '(')) userVariables.delete(key);
+          }
+        }
+        self.postMessage({
+          id,
+          status: 'OK',
+          inputExpr: expr,
+          inputLatex: inputLatex || expr,
+          raw: 'Done',
+          approxRaw: 'Done',
+          exactLatex: `\\text{Done}`,
+          approxLatex: `\\text{Done}`,
+          variables: getVariablesSnapshot()
+        });
+        return;
+      }
+
+      if (isFunctionDef) {
+        const rawOut = caseval(giacExpr).replace(/;$/, '').trim();
+        if (
+          rawOut.startsWith('GIAC_ERROR') ||
+          rawOut.toLowerCase().startsWith('error') ||
+          rawOut.includes('syntax error')
+        ) {
+          throw new Error(rawOut.replace(/^GIAC_ERROR:\s*/i, ''));
+        }
+        const rhs = giacExpr.split(':=')[1].trim();
+        userVariables.set(assignedSymbol, rhs);
+        self.postMessage({
+          id,
+          status: 'OK',
+          inputExpr: expr,
+          inputLatex: inputLatex || expr,
+          raw: 'Done',
+          approxRaw: 'Done',
+          exactLatex: `\\text{Done}`,
+          approxLatex: `\\text{Done}`,
+          variables: getVariablesSnapshot()
+        });
+        return;
+      }
+
+      const finalGiacCmd = forceApprox ? `evalf(${giacExpr})` : giacExpr;
+      const rawGiacOut = caseval(finalGiacCmd).replace(/;$/, '').trim();
+
+      if (
+        !rawGiacOut ||
+        rawGiacOut === 'undef' ||
+        rawGiacOut.startsWith('GIAC_ERROR') ||
+        rawGiacOut.toLowerCase().startsWith('error') ||
+        rawGiacOut.includes('syntax error')
+      ) {
+        throw new Error((rawGiacOut || 'Expresión indefinida').replace(/^GIAC_ERROR:\s*/i, ''));
+      }
+
+      const rawOutput = rawGiacOut.replace(/^list\[/, '[');
+      const exactLatex = giacExprToLatex(rawGiacOut);
+      const approxGiacOut = caseval(`evalf(${rawGiacOut})`).replace(/;$/, '').trim();
+      const approxRaw = approxGiacOut.replace(/^list\[/, '[');
+      const approxLatex =
+        approxGiacOut && !approxGiacOut.startsWith('GIAC_ERROR')
+          ? giacExprToLatex(approxGiacOut)
+          : exactLatex;
+
+      lastAns = rawOutput;
+      lastAnsLatex = exactLatex || rawOutput;
+      if (assignedSymbol) {
+        userVariables.set(assignedSymbol, rawOutput);
+      }
+
+      self.postMessage({
+        id,
+        status: 'OK',
+        inputExpr: giacExpr,
+        inputLatex: inputLatex || exactLatex,
+        raw: rawOutput,
+        approxRaw: approxRaw || rawOutput,
+        exactLatex: exactLatex || rawOutput,
+        approxLatex: approxLatex || approxRaw || rawOutput,
+        variables: getVariablesSnapshot()
+      });
+    } catch (err) {
+      self.postMessage({
+        id,
+        status: 'ERROR',
+        inputExpr: expr,
+        inputLatex: inputLatex || expr,
+        error: err.message || 'Error de evaluación simbólica'
+      });
+    }
+  }
+};

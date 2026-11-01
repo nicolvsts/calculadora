@@ -1,0 +1,19 @@
+{
+  "name": "Own Calc — TI-Nspire CAS Scratchpad",
+  "short_name": "Own Calc",
+  "description": "Calculadora simbólica CAS 100% offline impulsada por Giac WebAssembly con sintaxis compatible con TI-Nspire.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f141d",
+  "theme_color": "#161d2a",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

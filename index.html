@@ -1,0 +1,2662 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#141619" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Own Calc" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <title>Own Calc — TI-Nspire CX CAS</title>
+
+  <!-- KaTeX y MathLive Locales (Renderizado e Interacción 2D MathPrint 100% Offline) -->
+  <link rel="stylesheet" href="./vendor/katex.min.css" />
+  <link rel="stylesheet" href="./vendor/mathlive-static.css" />
+  <script defer src="./vendor/katex.min.js"></script>
+  <script defer src="./vendor/mathlive.min.js"></script>
+
+  <style>
+    :root {
+      --chassis-bg: #16181c;
+      --chassis-panel: #1f2228;
+      --key-dark: #25282f;
+      --key-dark-top: #32363f;
+      --key-num: #6e737b;
+      --key-num-top: #848992;
+      --key-ctrl: #88bae6;
+      --key-ctrl-top: #a7d0f5;
+      --key-xyz: #5a5f68;
+      --label-blue: #7ab4e8;
+      --label-white: #f1f5f9;
+      --touchpad-ring: #88bae6;
+      --lcd-bg: #f8fafc;
+      --lcd-text: #0f172a;
+      --lcd-accent: #0284c7;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(circle at center, #232936 0%, #0b0d12 100%);
+      height: 100dvh;
+      width: 100vw;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    .calculator-shell {
+      width: min(100vw, 470px);
+      height: min(100dvh, 960px);
+      background: linear-gradient(180deg, #22252b 0%, #16181c 35%, #121417 100%);
+      border-radius: clamp(0px, 3vw, 28px);
+      border: 2px solid #333842;
+      box-shadow:
+        0 24px 60px rgba(0, 0, 0, 0.85),
+        inset 0 1px 2px rgba(255, 255, 255, 0.12);
+      display: flex;
+      flex-direction: column;
+      padding: clamp(6px, 1.2vh, 12px) clamp(8px, 1.8vw, 14px);
+      gap: clamp(4px, 0.7vh, 8px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    @media (max-width: 480px) {
+      .calculator-shell {
+        width: 100vw;
+        height: 100dvh;
+        border-radius: 0;
+        border: none;
+      }
+    }
+
+    /* =====================================================
+       PANTALLA LCD SUPERIOR (MODO SCRATCHPAD TI-NSPIRE CX)
+       ===================================================== */
+    .lcd-bezel {
+      flex: 1 1 0;
+      min-height: 230px;
+      background: #0a0c0e;
+      border-radius: 10px;
+      padding: 4px;
+      border: 1px solid #2c313a;
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.9);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .lcd-screen {
+      flex: 1 1 0;
+      min-height: 0;
+      background: var(--lcd-bg);
+      color: var(--lcd-text);
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+      font-size: 0.85rem;
+    }
+
+    .lcd-statusbar {
+      background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+      color: #f8fafc;
+      padding: 3px 8px;
+      height: 23px;
+      min-height: 23px;
+      max-height: 23px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #0284c7;
+      flex-shrink: 0;
+    }
+
+    .status-left, .status-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-pill {
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.12);
+      cursor: pointer;
+      font-size: 0.66rem;
+    }
+
+    .status-pill.mod-active {
+      background: var(--key-ctrl);
+      color: #090d14;
+      font-weight: 800;
+    }
+
+    .status-pill.cas-ready {
+      background: rgba(16, 185, 129, 0.25);
+      color: #6ee7b7;
+    }
+
+    /* Historial REPL dentro del LCD: Exactamente 4 operaciones de altura uniforme (25% c/u) */
+    #history {
+      flex: 1 1 0;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 0 8px;
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+      scroll-snap-type: y mandatory;
+    }
+
+    .history-item {
+      flex: 0 0 25%;
+      height: 25%;
+      min-height: 25%;
+      max-height: 25%;
+      scroll-snap-align: start;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 2px 4px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 0;
+      overflow: hidden;
+      transition: background 0.1s;
+    }
+
+    .history-input.selected-row,
+    .history-output.selected-row {
+      background: #dbeafe !important;
+      outline: 1.5px solid #2563eb;
+      outline-offset: -1.5px;
+      border-radius: 4px;
+    }
+
+    .history-input {
+      color: #1e293b;
+      font-size: 0.85rem;
+      cursor: pointer;
+      align-self: flex-start;
+      padding: 0 4px;
+      border-radius: 3px;
+      height: 48%;
+      display: flex;
+      align-items: center;
+      overflow-x: auto;
+      overflow-y: hidden;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+
+    .history-input:hover {
+      background: #e2e8f0;
+    }
+
+    .history-output-row {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 6px;
+      height: 50%;
+      overflow: hidden;
+    }
+
+    .history-output {
+      color: #0f172a;
+      font-size: 0.92rem;
+      cursor: pointer;
+      padding: 0 4px;
+      border-radius: 3px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      overflow-x: auto;
+      overflow-y: hidden;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+
+    .history-output:hover {
+      background: #e0f2fe;
+    }
+
+    .history-output .katex,
+    .history-input .katex {
+      line-height: 1;
+    }
+
+    .approx-chip {
+      background: #e2e8f0;
+      color: #0369a1;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* Línea de Edición 2D MathPrint (<math-field>) */
+    .lcd-entry-bar {
+      background: #f1f5f9;
+      border-top: 1.5px solid #94a3b8;
+      padding: 3px 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+      min-height: 44px;
+    }
+
+    .entry-prompt {
+      color: #0284c7;
+      font-weight: 800;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    math-field#expr-input {
+      flex: 1;
+      border: 1px solid #94a3b8;
+      background: #ffffff;
+      color: #0f172a;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 1.02rem;
+      min-height: 36px;
+      outline: none;
+      --caret-color: #0284c7;
+      --selection-background-color: #bae6fd;
+      --selection-color: #0f172a;
+      --placeholder-color: #0284c7;
+      --placeholder-opacity: 0.85;
+      --contains-highlight-background-color: rgba(2, 132, 199, 0.1);
+    }
+
+    math-field#expr-input:focus-within {
+      border-color: #0284c7;
+      box-shadow: 0 0 0 1.5px rgba(2, 132, 199, 0.25);
+    }
+
+    math-field#expr-input::part(virtual-keyboard-toggle),
+    math-field#expr-input::part(menu-toggle) {
+      display: none !important;
+    }
+
+    /* Toast "Sin acción asignada" dentro de la pantalla LCD */
+    #lcd-toast {
+      position: absolute;
+      bottom: 50px;
+      left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      background: rgba(15, 23, 42, 0.94);
+      color: #f8fafc;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      border: 1px solid #38bdf8;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      z-index: 40;
+      white-space: nowrap;
+    }
+
+    #lcd-toast.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Menús Emergentes / Paletas Oficiales dentro del LCD */
+    #lcd-modal {
+      position: absolute;
+      inset: 22px 5px 5px 5px;
+      background: rgba(255, 255, 255, 0.98);
+      border: 1.5px solid #0284c7;
+      border-radius: 6px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      display: none;
+      flex-direction: column;
+      z-index: 30;
+      overflow: hidden;
+    }
+
+    #lcd-modal.open {
+      display: flex;
+    }
+
+    .modal-header {
+      background: #0f172a;
+      color: #ffffff;
+      padding: 4px 8px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .modal-close {
+      background: transparent;
+      color: #94a3b8;
+      border: none;
+      font-size: 0.72rem;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 5px;
+      font-size: 0.78rem;
+    }
+
+    .palette-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+    }
+
+    .palette-cell {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      padding: 5px 3px;
+      text-align: center;
+      font-weight: 600;
+      color: #0f172a;
+      cursor: pointer;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+    }
+
+    .palette-cell:hover,
+    .palette-cell.focused-item {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #0369a1;
+      box-shadow: 0 0 0 1.5px #38bdf8;
+    }
+
+    .menu-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .menu-row {
+      padding: 4px 7px;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #0f172a;
+      font-weight: 500;
+    }
+
+    .menu-row:hover,
+    .menu-row.focused-item {
+      background: #0284c7;
+      color: #ffffff;
+    }
+
+    .menu-row small {
+      opacity: 0.75;
+      font-family: monospace;
+    }
+
+    /* =====================================================
+       BOTONERA FÍSICA DE ALTA RESOLUCIÓN (4 BLOQUES)
+       ESTILO 1: SERIGRAFÍA ORIGINAL TI-NSPIRE (HUMANISTA + MATH + SVG)
+       ===================================================== */
+    .keypad-chassis {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: clamp(3px, 0.55vh, 6px);
+      font-family: 'Segoe UI', 'Frutiger', 'Myriad Pro', 'Trebuchet MS', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .key-slot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 1.5px;
+    }
+
+    .sec-label {
+      color: var(--label-blue);
+      font-family: inherit;
+      font-size: clamp(0.58rem, 1.18vh, 0.7rem);
+      font-weight: 600;
+      line-height: 1;
+      height: 13px;
+      min-height: 13px;
+      max-height: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      overflow: visible;
+    }
+
+    .sec-label.white-sec {
+      color: #d8dee9;
+      font-weight: 600;
+    }
+
+    .hw-btn {
+      width: 100%;
+      height: clamp(27px, 3.65vh, 35px);
+      background: linear-gradient(180deg, var(--key-dark-top) 0%, var(--key-dark) 100%);
+      color: var(--label-white);
+      border: 1px solid #111317;
+      border-top-color: #464c58;
+      border-radius: 6px;
+      box-shadow: 0 2px 3px rgba(0, 0, 0, 0.65);
+      font-family: inherit;
+      font-size: clamp(0.74rem, 1.48vh, 0.88rem);
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2.5px;
+      cursor: pointer;
+      touch-action: manipulation;
+      position: relative;
+      transition: transform 0.05s, filter 0.08s;
+    }
+
+    .hw-btn svg,
+    .sec-label svg,
+    .tp-dir svg,
+    .tp-center-btn svg,
+    .tp-outer-icon svg {
+      pointer-events: none;
+      flex-shrink: 0;
+    }
+
+    /* Tipografía Matemática en Teclas (KaTeX_Math / Cambria Math en cursiva) */
+    .math-var {
+      font-family: 'KaTeX_Math', 'Cambria Math', 'Times New Roman', Georgia, serif;
+      font-style: italic;
+      font-weight: 600;
+    }
+
+    .math-rom {
+      font-family: 'KaTeX_Main', 'Cambria Math', 'Times New Roman', Georgia, serif;
+      font-style: normal;
+      font-weight: 600;
+    }
+
+    .math-sup {
+      font-size: 0.72em;
+      line-height: 0;
+      position: relative;
+      top: -0.38em;
+      margin-left: 0.5px;
+    }
+
+    .hw-btn:active {
+      transform: translateY(1.5px);
+      box-shadow: 0 0 1px rgba(0, 0, 0, 0.8);
+      filter: brightness(1.18);
+    }
+
+    .hw-btn.ctrl-key {
+      background: linear-gradient(180deg, var(--key-ctrl-top) 0%, var(--key-ctrl) 100%);
+      color: #0b131e;
+      border-top-color: #d0e8ff;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+    }
+
+    .hw-btn.ctrl-key.active-latch,
+    .hw-btn.shift-active {
+      box-shadow: 0 0 10px #38bdf8, inset 0 0 4px #ffffff;
+      filter: brightness(1.15);
+    }
+
+    .hw-btn.num-key {
+      background: linear-gradient(180deg, var(--key-num-top) 0%, var(--key-num) 100%);
+      color: #ffffff;
+      border-top-color: #9ea4ae;
+      font-family: 'Segoe UI', 'Frutiger', 'Helvetica Neue', Arial, sans-serif;
+      font-size: clamp(1rem, 2.05vh, 1.22rem);
+      font-weight: 500;
+      height: clamp(27px, 3.65vh, 35px);
+    }
+
+    .hw-btn.num-key.neg-key {
+      font-size: clamp(0.82rem, 1.65vh, 0.98rem);
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .hw-btn.xyz-key {
+      background: linear-gradient(180deg, #747a84 0%, var(--key-xyz) 100%);
+      border-top-color: #8f96a2;
+    }
+
+    .nav-zone {
+      display: grid;
+      grid-template-columns: 1fr 2.25fr 1fr;
+      gap: 8px;
+      align-items: stretch;
+      padding-bottom: 4px;
+      border-bottom: 1.5px solid #0b0c0e;
+    }
+
+    .nav-side-col {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: clamp(2px, 0.4vh, 5px);
+    }
+
+    .touchpad-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      padding: 10px 14px;
+    }
+
+    .tp-outer-icon {
+      position: absolute;
+      color: var(--label-blue);
+      font-size: 0.62rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .tp-outer-icon.top { top: -2px; }
+    .tp-outer-icon.bottom { bottom: -3px; }
+    .tp-outer-icon.left { left: -3px; top: 50%; transform: translateY(-50%); }
+    .tp-outer-icon.right { right: -3px; top: 50%; transform: translateY(-50%); }
+
+    .touchpad-ring {
+      width: 100%;
+      height: clamp(90px, 12.2vh, 116px);
+      border-radius: 22px;
+      border: 2.5px solid var(--touchpad-ring);
+      background: radial-gradient(circle at center, #20232a 0%, #121418 100%);
+      box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.85), 0 2px 5px rgba(0, 0, 0, 0.6);
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 1.15fr 1fr;
+      grid-template-rows: 1fr 1.3fr 1fr;
+      align-items: center;
+      justify-items: center;
+    }
+
+    .tp-dir {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      border: none;
+      color: #d8dee9;
+      font-size: 0.68rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .tp-dir:active {
+      color: #38bdf8;
+    }
+
+    .tp-center-btn {
+      width: 100%;
+      height: 100%;
+      border-radius: 10px;
+      border: 1.5px solid #d8dee9;
+      background: linear-gradient(180deg, #272b33 0%, #191c22 100%);
+      color: #f8fafc;
+      font-size: 0.72rem;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      line-height: 1;
+    }
+
+    .tp-center-btn:active {
+      background: #334155;
+    }
+
+    .modifier-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 0.75fr 1fr 1fr;
+      gap: 6px;
+      align-items: end;
+    }
+
+    .scientific-zone {
+      display: grid;
+      grid-template-columns: 1.75fr 2.5fr 1.75fr;
+      gap: 7px;
+      align-items: end;
+      padding-bottom: 4px;
+      border-bottom: 1.5px solid #0b0c0e;
+    }
+
+    .dual-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 4px;
+      row-gap: clamp(2px, 0.4vh, 5px);
+      align-items: end;
+    }
+
+    .numpad-col {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      column-gap: 6px;
+      row-gap: clamp(2px, 0.4vh, 5px);
+      align-items: end;
+    }
+
+    .span-2 {
+      grid-column: span 2;
+    }
+
+    .alpha-zone {
+      display: grid;
+      grid-template-columns: repeat(9, 1fr);
+      column-gap: 4px;
+      row-gap: clamp(3px, 0.55vh, 6px);
+      padding-top: 2px;
+    }
+
+    .alpha-zone .hw-btn {
+      height: clamp(21px, 2.7vh, 26px);
+      font-family: 'Segoe UI', 'Frutiger', 'Helvetica Neue', Arial, sans-serif;
+      font-size: clamp(0.7rem, 1.32vh, 0.8rem);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      border-radius: 5px;
+    }
+
+    .spacebar-slot {
+      grid-column: 7 / span 2;
+    }
+  </style>
+</head>
+<body>
+  <main class="calculator-shell" aria-label="Calculadora TI-Nspire CX CAS">
+    <!-- ==========================================
+         PANTALLA LCD (MODO SCRATCHPAD 2D MATHPRINT)
+         ========================================== -->
+    <section class="lcd-bezel">
+      <div class="lcd-screen">
+        <div class="lcd-statusbar">
+          <div class="status-left">
+            <span style="display:inline-flex;align-items:center;gap:4px;">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                <rect x="4" y="2" width="12" height="16" rx="2"/>
+                <rect x="6.5" y="4.5" width="7" height="3.2" fill="currentColor" stroke="none"/>
+                <circle cx="7" cy="11" r="1" fill="currentColor" stroke="none"/>
+                <circle cx="10" cy="11" r="1" fill="currentColor" stroke="none"/>
+                <circle cx="13" cy="11" r="1" fill="currentColor" stroke="none"/>
+                <circle cx="7" cy="14.2" r="1" fill="currentColor" stroke="none"/>
+                <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
+                <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
+              </svg>
+              Scratchpad
+            </span>
+            <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
+            <span class="status-pill">AUTO</span>
+          </div>
+          <div class="status-right">
+            <span id="ctrl-indicator" class="status-pill mod-active" style="display:none;">CTRL</span>
+            <span id="shift-indicator" class="status-pill mod-active" style="display:none;">SHIFT</span>
+            <span id="engine-indicator" class="status-pill">CAS...</span>
+          </div>
+        </div>
+
+        <!-- Historial REPL 2D -->
+        <div id="history" aria-live="polite"></div>
+
+        <!-- Aviso temporal "Sin acción asignada" -->
+        <div id="lcd-toast" role="status">Sin acción asignada</div>
+
+        <!-- Ventana Emergente Interna Navegable con Flechas -->
+        <div id="lcd-modal">
+          <div class="modal-header">
+            <span id="modal-title">Menú</span>
+            <button class="modal-close" id="modal-close-btn">esc ✕</button>
+          </div>
+          <div class="modal-body" id="modal-body"></div>
+        </div>
+
+        <!-- Línea de Edición Bidimensional Interactiva (<math-field>) -->
+        <div class="lcd-entry-bar">
+          <span class="entry-prompt">&gt;</span>
+          <math-field id="expr-input" virtual-keyboard-policy="manual" inputmode="none"></math-field>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         CHASIS DE BOTONES FÍSICOS TI-NSPIRE CX CAS
+         ========================================== -->
+    <section class="keypad-chassis">
+      <!-- BLOQUE 1: NAVEGACIÓN Y TOUCHPAD -->
+      <div class="nav-zone">
+        <div class="nav-side-col">
+          <div class="key-slot">
+            <span class="sec-label" title="Undo (ctrl + esc)">
+              <svg width="13" height="11" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 2.5L2.5 5.5L6 8.5"/>
+                <path d="M3 5.5h6.5a3.5 3.5 0 1 1 0 7H6"/>
+              </svg>
+            </span>
+            <button class="hw-btn" data-key="esc">esc</button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label white-sec">save</span>
+            <button class="hw-btn" data-key="scratchpad" title="Scratchpad">
+              <svg width="19" height="16" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+                <path d="M5.5 3.5L3 16.5h6" stroke-opacity="0.85"/>
+                <rect x="8.5" y="2.5" width="11.5" height="15" rx="1.8" transform="rotate(6 14 10)"/>
+                <rect x="11" y="4.8" width="6.8" height="3" fill="currentColor" stroke="none" transform="rotate(6 14 10)"/>
+                <circle cx="11.2" cy="10.5" r="0.85" fill="currentColor" stroke="none"/>
+                <circle cx="13.8" cy="10.8" r="0.85" fill="currentColor" stroke="none"/>
+                <circle cx="16.4" cy="11.1" r="0.85" fill="currentColor" stroke="none"/>
+                <circle cx="10.9" cy="13.3" r="0.85" fill="currentColor" stroke="none"/>
+                <circle cx="13.5" cy="13.6" r="0.85" fill="currentColor" stroke="none"/>
+                <circle cx="16.1" cy="13.9" r="0.85" fill="currentColor" stroke="none"/>
+              </svg>
+            </button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label"></span>
+            <button class="hw-btn" data-key="tab" title="Siguiente recuadro de plantilla">tab</button>
+          </div>
+        </div>
+
+        <!-- Touchpad Central -->
+        <div class="touchpad-wrap">
+          <span class="tp-outer-icon top" data-key="tp-page-up">
+            <svg width="24" height="11" viewBox="0 0 26 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 9.5c1-3.5 3.5-5.5 7.5-5.5"/>
+              <polyline points="7,1.8 10,4 7.5,6.5"/>
+              <rect x="12.5" y="2" width="3" height="2.2" fill="currentColor" stroke="none"/>
+              <rect x="17" y="2" width="3" height="2.2" fill="currentColor" stroke="none"/>
+              <rect x="21.5" y="2" width="3" height="2.2" fill="currentColor" stroke="none"/>
+              <rect x="12.5" y="5.5" width="3" height="2.2" fill="currentColor" stroke="none"/>
+              <rect x="17" y="5.5" width="3" height="2.2" fill="currentColor" stroke="none"/>
+            </svg>
+          </span>
+          <span class="tp-outer-icon left" data-key="tp-page-left">
+            <svg width="16" height="13" viewBox="0 0 18 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">
+              <rect x="1.5" y="2" width="14" height="10" rx="1.2"/>
+              <polygon points="10.5,4.2 5.5,7 10.5,9.8" fill="currentColor" stroke="none"/>
+            </svg>
+          </span>
+          <span class="tp-outer-icon right" data-key="tp-page-right">
+            <svg width="16" height="13" viewBox="0 0 18 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">
+              <rect x="2.5" y="2" width="14" height="10" rx="1.2"/>
+              <polygon points="7.5,4.2 12.5,7 7.5,9.8" fill="currentColor" stroke="none"/>
+            </svg>
+          </span>
+          <span class="tp-outer-icon bottom" data-key="tp-page-down">
+            <svg width="22" height="12" viewBox="0 0 24 13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2.5" width="12" height="8.5" rx="1.2"/>
+              <path d="M14 9c3.2 0 5.2-1.8 6.2-5.5"/>
+              <polyline points="17.8,4.2 20.4,2.8 21.5,5.6"/>
+            </svg>
+          </span>
+
+          <div class="touchpad-ring">
+            <div></div>
+            <button class="tp-dir" data-key="up" title="Arriba (Menú / Plantilla 2D / Historial)">
+              <svg width="10" height="7" viewBox="0 0 10 7" fill="currentColor"><polygon points="5,1 9,6 1,6"/></svg>
+            </button>
+            <div></div>
+
+            <button class="tp-dir" data-key="left" title="Izquierda (Menú / Cursor 2D)">
+              <svg width="7" height="10" viewBox="0 0 7 10" fill="currentColor"><polygon points="1,5 6,1 6,9"/></svg>
+            </button>
+            <button class="tp-center-btn" data-key="center-click" title="Seleccionar / Confirmar">
+              <svg width="15" height="14" viewBox="0 0 20 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 9.5V5.2a1.3 1.3 0 0 1 2.6 0V8"/>
+                <path d="M9.6 7.5V4.5a1.3 1.3 0 0 1 2.6 0V8"/>
+                <path d="M12.2 7.8V5.5a1.3 1.3 0 0 1 2.6 0v6c0 3-2.2 5-5.2 5H8.5c-2.2 0-3.8-1.3-4.8-3.2l-1.3-2.5a1.3 1.3 0 0 1 2.2-1.3L7 11"/>
+              </svg>
+              <svg width="15" height="14" viewBox="0 0 20 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+                <line x1="7" y1="2" x2="7" y2="4.2"/>
+                <line x1="2.5" y1="6.5" x2="4.7" y2="6.5"/>
+                <line x1="3.8" y1="3.3" x2="5.3" y2="4.8"/>
+                <line x1="10.2" y1="3.3" x2="8.7" y2="4.8"/>
+                <line x1="3.8" y1="9.7" x2="5.3" y2="8.2"/>
+                <polygon points="7.5,6.8 15.5,10.2 12.2,11.6 14.8,14.5 13.2,15.8 10.6,12.8 9,15.5" fill="currentColor" stroke="none"/>
+              </svg>
+            </button>
+            <button class="tp-dir" data-key="right" title="Derecha (Submenú / Cursor 2D)">
+              <svg width="7" height="10" viewBox="0 0 7 10" fill="currentColor"><polygon points="6,5 1,1 1,9"/></svg>
+            </button>
+
+            <div></div>
+            <button class="tp-dir" data-key="down" title="Abajo (Menú / Plantilla 2D / Historial)">
+              <svg width="10" height="7" viewBox="0 0 10 7" fill="currentColor"><polygon points="5,6 9,1 1,1"/></svg>
+            </button>
+            <div></div>
+          </div>
+        </div>
+
+        <div class="nav-side-col">
+          <div class="key-slot">
+            <span class="sec-label white-sec">off</span>
+            <button class="hw-btn" data-key="on">
+              <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round">
+                <path d="M2 8.8L9 2.8l7 6"/>
+                <path d="M4.2 7.6V15h9.6V7.6"/>
+                <rect x="7.6" y="10.5" width="2.8" height="4.5"/>
+              </svg>
+              <span>on</span>
+            </button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label white-sec">+ page</span>
+            <button class="hw-btn" data-key="doc">
+              <span>doc</span>
+              <svg width="7" height="6" viewBox="0 0 8 6" fill="currentColor"><polygon points="1,1 7,1 4,5"/></svg>
+            </button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label" title="Menú contextual (ctrl + menu)">
+              <svg width="15" height="12" viewBox="0 0 18 14" fill="none" stroke="currentColor" stroke-width="1.4">
+                <rect x="2" y="1.5" width="11" height="10" rx="1.2"/>
+                <line x1="4.2" y1="4.2" x2="10.8" y2="4.2"/>
+                <line x1="4.2" y1="6.5" x2="10.8" y2="6.5"/>
+                <line x1="4.2" y1="8.8" x2="8.8" y2="8.8"/>
+                <polygon points="11.5,7.5 16.5,10 14.2,10.8 15.6,13 14.3,13.6 12.9,11.4 11.5,12.8" fill="currentColor" stroke="none"/>
+              </svg>
+            </span>
+            <button class="hw-btn" data-key="menu">menu</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLOQUE 2: FILA DE MODIFICADORES -->
+      <div class="modifier-row">
+        <div class="key-slot">
+          <span class="sec-label"></span>
+          <button class="hw-btn ctrl-key" id="btn-ctrl" data-key="ctrl">ctrl</button>
+        </div>
+        <div class="key-slot">
+          <span class="sec-label white-sec">CAPS</span>
+          <button class="hw-btn" id="btn-shift" data-key="shift">
+            <svg width="11" height="12" viewBox="0 0 14 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+              <polygon points="7,1.5 12.5,7.5 9.3,7.5 9.3,13.2 4.7,13.2 4.7,7.5 1.5,7.5"/>
+            </svg>
+            <span>shift</span>
+          </button>
+        </div>
+        <div></div>
+        <div class="key-slot">
+          <span class="sec-label">
+            <span>sto</span>
+            <svg width="11" height="8" viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="1" y1="4" x2="10.5" y2="4"/>
+              <polyline points="7.5,1.5 10.5,4 7.5,6.5"/>
+            </svg>
+          </span>
+          <button class="hw-btn" data-key="var">var</button>
+        </div>
+        <div class="key-slot">
+          <span class="sec-label white-sec">clear</span>
+          <button class="hw-btn" data-key="del" style="flex-direction:column;gap:0px;line-height:0.95;">
+            <span style="font-size:0.7rem;">del</span>
+            <svg width="14" height="6" viewBox="0 0 16 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="14.5" y1="3.5" x2="2" y2="3.5"/>
+              <polyline points="5,1 1.8,3.5 5,6"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- BLOQUE 3: CUERPO CIENTÍFFICO Y NUMÉRICO CENTRAL -->
+      <div class="scientific-zone">
+        <!-- Columna Doble Izquierda -->
+        <div class="dual-col">
+          <div class="key-slot">
+            <span class="sec-label">
+              <span>| ≠ ≥</span>
+              <svg width="5" height="6" viewBox="0 0 6 7" fill="currentColor"><polygon points="1,1 5.5,3.5 1,6"/></svg>
+            </span>
+            <button class="hw-btn" data-key="equals" style="font-size:0.95rem;">=</button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label white-sec">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3">
+                <circle cx="7" cy="7" r="5.8"/>
+                <path d="M5.5 5.3a1.5 1.4 0 1 1 2.2 1.2c-.5.3-.7.6-.7 1.2"/>
+                <circle cx="7" cy="10.1" r="0.7" fill="currentColor" stroke="none"/>
+              </svg>
+            </span>
+            <button class="hw-btn" data-key="trig" style="flex-direction:column;gap:0px;line-height:0.95;">
+              <span>trig</span>
+              <svg width="5" height="5" viewBox="0 0 6 6" fill="currentColor"><polygon points="1,0.8 5.2,3 1,5.2"/></svg>
+            </button>
+          </div>
+
+          <div class="key-slot">
+            <span class="sec-label">
+              <span style="display:inline-flex;align-items:center;">
+                <sup class="math-var" style="font-size:0.52rem;top:-0.32em;margin-right:-1px;">n</sup>
+                <svg width="15" height="11" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="1,7 3,6.2 5.2,10.5 8.5,1.5 15,1.5"/>
+                </svg>
+                <span class="math-var" style="margin-left:-5.5px;font-size:0.62rem;">x</span>
+              </span>
+            </span>
+            <button class="hw-btn" data-key="power">
+              <svg width="12" height="8" viewBox="0 0 14 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="2,7 7,2 12,7"/>
+              </svg>
+            </button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label">
+              <svg width="14" height="10" viewBox="0 0 15 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="1,6.2 3,5.5 5.2,9.8 8.5,1.5 14,1.5"/>
+              </svg>
+            </span>
+            <button class="hw-btn" data-key="square">
+              <span><span class="math-var">x</span><sup class="math-sup">2</sup></span>
+            </button>
+          </div>
+
+          <div class="key-slot">
+            <span class="sec-label">ln</span>
+            <button class="hw-btn" data-key="exp">
+              <span><span class="math-var">e</span><sup class="math-sup math-var">x</sup></span>
+            </button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label">log</span>
+            <button class="hw-btn" data-key="tenpow">
+              <span>10<sup class="math-sup math-var">x</sup></span>
+            </button>
+          </div>
+
+          <div class="key-slot">
+            <span class="sec-label">[ ]</span>
+            <button class="hw-btn" data-key="lparen">(</button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label">{ }</span>
+            <button class="hw-btn" data-key="rparen">)</button>
+          </div>
+        </div>
+
+        <!-- Teclado Numérico Central (3×4) -->
+        <div class="numpad-col">
+          <div class="key-slot">
+            <span class="sec-label"></span>
+            <button class="hw-btn num-key" data-digit="7">7</button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label"></span>
+            <button class="hw-btn num-key" data-digit="8">8</button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label"></span>
+            <button class="hw-btn num-key" data-digit="9">9</button>
+          </div>
+
+          <div class="key-slot">
+            <span class="sec-label"></span>
+            <button class="hw-btn num-key" data-digit="4">4</button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label"></span>
+            <button class="hw-btn num-key" data-digit="5">5</button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label"></span>
+            <button class="hw-btn num-key" data-digit="6">6</button>
+          </div>
+
+          <div class="key-slot">
+            <span class="sec-label"></span>
+            <button class="hw-btn num-key" data-digit="1">1</button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label"></span>
+            <button class="hw-btn num-key" data-digit="2">2</button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label"></span>
+            <button class="hw-btn num-key" data-digit="3">3</button>
+          </div>
+
+          <div class="key-slot">
+            <span class="sec-label"></span>
+            <button class="hw-btn num-key" data-digit="0">0</button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label white-sec">capture</span>
+            <button class="hw-btn num-key" data-key="dot">•</button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label">ans</span>
+            <button class="hw-btn num-key neg-key" data-key="neg">(−)</button>
+          </div>
+        </div>
+
+        <!-- Columna Doble Derecha -->
+        <div class="dual-col">
+          <div class="key-slot">
+            <span class="sec-label">:=</span>
+            <button class="hw-btn" data-key="templates" title="Plantillas Matemáticas 2D">
+              <svg width="24" height="14" viewBox="0 0 28 16" fill="none" stroke="currentColor" stroke-width="1.35">
+                <line x1="2" y1="2" x2="2" y2="14"/>
+                <rect x="4.5" y="4.5" width="5.5" height="7"/>
+                <line x1="12.5" y1="2" x2="12.5" y2="14"/>
+                <path d="M18 1.8c-1.5 0-2 .9-2 2.4v2c0 1-.9 1.5-1.4 1.8.5.3 1.4.8 1.4 1.8v2c0 1.5.5 2.4 2 2.4"/>
+                <rect x="20.2" y="2.2" width="4.6" height="4.6"/>
+                <rect x="20.2" y="9.2" width="4.6" height="4.6"/>
+              </svg>
+            </button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label">
+              <span>∞<span class="math-var">β</span>°</span>
+            </span>
+            <button class="hw-btn" data-key="catalog" title="Catálogo CAS y Símbolos">
+              <svg width="19" height="14" viewBox="0 0 22 16" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round">
+                <path d="M11 3.5C9 2 5 2 2 3v10c3-1 7-1 9 .5 2-1.5 6-1.5 9-.5V3c-3-1-7-1-9 .5z"/>
+                <line x1="11" y1="3.5" x2="11" y2="13.5"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="key-slot">
+            <span class="sec-label">
+              <svg width="15" height="10" viewBox="0 0 18 11" fill="none" stroke="currentColor" stroke-width="1.3">
+                <line x1="2" y1="1.5" x2="2" y2="4.2"/>
+                <line x1="4" y1="1.5" x2="4" y2="4.2"/>
+                <rect x="6.2" y="3" width="5.6" height="5.6"/>
+                <line x1="14" y1="1.5" x2="14" y2="4.2"/>
+                <line x1="16" y1="1.5" x2="16" y2="4.2"/>
+              </svg>
+            </span>
+            <button class="hw-btn" data-key="mul">
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                <line x1="2.5" y1="2.5" x2="9.5" y2="9.5"/>
+                <line x1="9.5" y1="2.5" x2="2.5" y2="9.5"/>
+              </svg>
+            </button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.25">
+                <rect x="4.2" y="1" width="5.6" height="4.2"/>
+                <line x1="2" y1="7" x2="12" y2="7"/>
+                <rect x="4.2" y="8.8" width="5.6" height="4.2"/>
+              </svg>
+            </span>
+            <button class="hw-btn" data-key="div">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                <circle cx="7" cy="3" r="1.2" fill="currentColor" stroke="none"/>
+                <line x1="2" y1="7" x2="12" y2="7"/>
+                <circle cx="7" cy="11" r="1.2" fill="currentColor" stroke="none"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="key-slot">
+            <span class="sec-label">
+              <svg width="15" height="10" viewBox="0 0 17 11" fill="none" stroke="currentColor" stroke-width="1.3">
+                <circle cx="5.5" cy="5.5" r="4"/>
+                <path d="M5.5 1.5a4 4 0 0 1 0 8z" fill="currentColor" stroke="none"/>
+                <polygon points="12,2.8 16,5.5 12,8.2" fill="currentColor" stroke="none"/>
+              </svg>
+            </span>
+            <button class="hw-btn" data-key="plus">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                <line x1="6" y1="2" x2="6" y2="10"/>
+                <line x1="2" y1="6" x2="10" y2="6"/>
+              </svg>
+            </button>
+          </div>
+          <div class="key-slot">
+            <span class="sec-label">
+              <svg width="15" height="10" viewBox="0 0 17 11" fill="none" stroke="currentColor" stroke-width="1.3">
+                <polygon points="5,2.8 1,5.5 5,8.2" fill="currentColor" stroke="none"/>
+                <circle cx="11.5" cy="5.5" r="4"/>
+                <path d="M11.5 1.5a4 4 0 0 1 0 8z" fill="currentColor" stroke="none"/>
+              </svg>
+            </span>
+            <button class="hw-btn" data-key="minus">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                <line x1="2" y1="6" x2="10" y2="6"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="key-slot span-2">
+            <span class="sec-label" style="font-size:0.75rem;">≈</span>
+            <button class="hw-btn" data-key="enter">enter</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLOQUE 4: TECLADO ALFANUMÉRICO INFERIOR (4 FILAS × 9 COLUMNAS) -->
+      <div class="alpha-zone">
+        <button class="hw-btn" data-key="ee" style="font-size:0.65rem;">EE</button>
+        <button class="hw-btn" data-letter="a">A</button>
+        <button class="hw-btn" data-letter="b">B</button>
+        <button class="hw-btn" data-letter="c">C</button>
+        <button class="hw-btn" data-letter="d">D</button>
+        <button class="hw-btn" data-letter="e">E</button>
+        <button class="hw-btn" data-letter="f">F</button>
+        <button class="hw-btn" data-letter="g">G</button>
+        <button class="hw-btn" data-key="punct">
+          <span>?!</span>
+          <svg width="5" height="6" viewBox="0 0 6 7" fill="currentColor"><polygon points="1,1 5.5,3.5 1,6"/></svg>
+        </button>
+
+        <button class="hw-btn" data-key="pi">
+          <span class="math-rom" style="font-size:0.84rem;">π</span>
+          <svg width="5" height="6" viewBox="0 0 6 7" fill="currentColor"><polygon points="1,1 5.5,3.5 1,6"/></svg>
+        </button>
+        <button class="hw-btn" data-letter="h">H</button>
+        <button class="hw-btn" data-letter="i">I</button>
+        <button class="hw-btn" data-letter="j">J</button>
+        <button class="hw-btn" data-letter="k">K</button>
+        <button class="hw-btn" data-letter="l">L</button>
+        <button class="hw-btn" data-letter="m">M</button>
+        <button class="hw-btn" data-letter="n">N</button>
+        <button class="hw-btn" data-key="flag" title="Bandera (Sin acción asignada)">
+          <svg width="11" height="12" viewBox="0 0 12 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="2.5" y1="1.5" x2="2.5" y2="12.5"/>
+            <polygon points="2.5,2 10,2 8.2,4.8 10,7.5 2.5,7.5"/>
+          </svg>
+        </button>
+
+        <button class="hw-btn" data-key="comma">,</button>
+        <button class="hw-btn" data-letter="o">O</button>
+        <button class="hw-btn" data-letter="p">P</button>
+        <button class="hw-btn" data-letter="q">Q</button>
+        <button class="hw-btn" data-letter="r">R</button>
+        <button class="hw-btn" data-letter="s">S</button>
+        <button class="hw-btn" data-letter="t">T</button>
+        <button class="hw-btn" data-letter="u">U</button>
+        <button class="hw-btn" data-key="return" title="Retorno / Enter">
+          <svg width="12" height="10" viewBox="0 0 14 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11.5 2v5.5H3"/>
+            <polyline points="5.8,4.8 2.8,7.5 5.8,10.2"/>
+          </svg>
+        </button>
+
+        <div></div>
+        <button class="hw-btn" data-letter="v">V</button>
+        <button class="hw-btn" data-letter="w">W</button>
+        <button class="hw-btn xyz-key" data-letter="x">X</button>
+        <button class="hw-btn xyz-key" data-letter="y">Y</button>
+        <button class="hw-btn xyz-key" data-letter="z">Z</button>
+        <div class="spacebar-slot">
+          <button class="hw-btn" data-key="space" title="Espacio">
+            <svg width="16" height="8" viewBox="0 0 18 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="2,2.5 2,6 16,6 16,2.5"/>
+            </svg>
+          </button>
+        </div>
+        <div></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Purga de cachés antiguos y registro de Service Worker v12
+    if ('caches' in window) {
+      caches.keys().then((keys) => {
+        keys.forEach((k) => {
+          if (k !== 'own-calc-cas-v12') caches.delete(k);
+        });
+      });
+    }
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js?v=12').then((reg) => reg.update()).catch(() => {});
+      });
+    }
+
+    const historyEl = document.getElementById('history');
+    const mf = document.getElementById('expr-input');
+    const toastEl = document.getElementById('lcd-toast');
+    const modalEl = document.getElementById('lcd-modal');
+    const modalTitleEl = document.getElementById('modal-title');
+    const modalBodyEl = document.getElementById('modal-body');
+    const angleIndicator = document.getElementById('angle-indicator');
+    const ctrlIndicator = document.getElementById('ctrl-indicator');
+    const shiftIndicator = document.getElementById('shift-indicator');
+    const engineIndicator = document.getElementById('engine-indicator');
+    const btnCtrl = document.getElementById('btn-ctrl');
+    const btnShift = document.getElementById('btn-shift');
+
+    // Configurar MathLive 100% local y con cajas editables 2D (paréntesis manuales y sin teclado nativo móvil)
+    function suppressMobileNativeKeyboard() {
+      mf.setAttribute('inputmode', 'none');
+      if (mf.shadowRoot) {
+        mf.shadowRoot.querySelectorAll('[contenteditable], textarea, input').forEach((el) => {
+          el.setAttribute('inputmode', 'none');
+        });
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (window.MathfieldElement) {
+        window.MathfieldElement.fontsDirectory = './vendor/fonts';
+        window.MathfieldElement.soundsDirectory = null;
+      }
+      mf.mathVirtualKeyboardPolicy = 'manual';
+      mf.smartMode = false;
+      mf.smartFence = false;
+      mf.smartSuperscript = false;
+      suppressMobileNativeKeyboard();
+      mf.addEventListener('focus', suppressMobileNativeKeyboard);
+      mf.focus();
+    });
+
+    let reqCounter = 0;
+    let angleMode = 'RAD';
+    let ctrlActive = false;
+    let shiftMode = 'OFF'; // 'OFF' | 'ONCE' | 'CAPS'
+    let undoStack = [''];
+    let lastCapturedLatex = 'Ans';
+    let cachedVariables = [];
+    let selectedHistoryIndex = -1;
+    const historyRecords = [];
+
+    // Estado de navegación por flechas dentro de cualquier modal abierto (#lcd-modal)
+    const modalNav = {
+      isOpen: false,
+      mode: 'list', // 'list' | 'grid'
+      cols: 1,
+      items: [],
+      focusIndex: 0,
+      onBack: null,
+      onSwitchTab: null
+    };
+
+    // Inicializar Web Worker dedicado con giac.wasm
+    let casWorker = null;
+    try {
+      casWorker = new Worker('./cas.worker.js?v=10');
+      casWorker.onmessage = handleWorkerMessage;
+      casWorker.onerror = () => {
+        engineIndicator.textContent = 'ERR';
+      };
+    } catch (_) {
+      engineIndicator.textContent = 'HTTP REQ';
+    }
+
+    function handleWorkerMessage(event) {
+      const data = event.data;
+      if (data.type === 'READY') {
+        engineIndicator.textContent = 'CAS ●';
+        engineIndicator.classList.add('cas-ready');
+        cachedVariables = data.variables || [];
+        return;
+      }
+      if (data.status === 'RESET_OK') {
+        historyEl.innerHTML = '';
+        historyRecords.length = 0;
+        selectedHistoryIndex = -1;
+        cachedVariables = data.variables || [];
+        showToast('Memoria y variables reiniciadas');
+        return;
+      }
+      if (data.status === 'ANGLE_MODE_OK') {
+        angleMode = data.angleMode;
+        angleIndicator.textContent = angleMode;
+        return;
+      }
+      if (data.variables) {
+        cachedVariables = data.variables;
+      }
+      renderHistoryItem(data);
+    }
+
+    let toastTimer = null;
+    function showToast(msg = 'Sin acción asignada') {
+      toastEl.textContent = msg;
+      toastEl.classList.add('visible');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toastEl.classList.remove('visible');
+      }, 1500);
+    }
+
+    function setCtrl(state) {
+      ctrlActive = state;
+      ctrlIndicator.style.display = ctrlActive ? 'inline-block' : 'none';
+      btnCtrl.classList.toggle('active-latch', ctrlActive);
+    }
+
+    function setShift(mode) {
+      shiftMode = mode;
+      if (mode === 'OFF') {
+        shiftIndicator.style.display = 'none';
+        btnShift.classList.remove('shift-active');
+      } else {
+        shiftIndicator.style.display = 'inline-block';
+        shiftIndicator.textContent = mode === 'CAPS' ? 'CAPS' : 'SHIFT';
+        btnShift.classList.add('shift-active');
+      }
+    }
+
+    function pushUndoState() {
+      const cur = mf.getValue('latex');
+      if (undoStack[undoStack.length - 1] !== cur) {
+        undoStack.push(cur);
+        if (undoStack.length > 50) undoStack.shift();
+      }
+    }
+
+    let parenHighlightTimer = null;
+    let activeParenSpans = [];
+
+    function clearParenHighlights() {
+      if (parenHighlightTimer) {
+        clearTimeout(parenHighlightTimer);
+        parenHighlightTimer = null;
+      }
+      activeParenSpans.forEach((span) => {
+        if (span && span.style) {
+          span.style.color = '';
+        }
+      });
+      activeParenSpans = [];
+    }
+
+    function collectShadowParens() {
+      const shadow = mf.shadowRoot;
+      if (!shadow) return { parens: [], lastBeforeCaret: -1 };
+      const mathRoot = shadow.querySelector('.ML__mathlive') || shadow;
+
+      const parens = [];
+      let caretSeen = false;
+      let lastBeforeCaret = -1;
+
+      const walker = document.createTreeWalker(mathRoot, NodeFilter.SHOW_ELEMENT, null);
+      let node = walker.nextNode();
+      while (node) {
+        if (node.classList && (node.classList.contains('ML__caret') || node.classList.contains('ML__contains-caret'))) {
+          caretSeen = true;
+        }
+        if (
+          node.tagName === 'SPAN' &&
+          node.childElementCount === 0 &&
+          !node.closest('.ML__sr-only')
+        ) {
+          const txt = node.textContent.trim();
+          if (txt === '(' || txt === ')') {
+            const idx = parens.length;
+            parens.push({ char: txt, el: node });
+            if (!caretSeen) {
+              lastBeforeCaret = idx;
+            }
+          }
+        }
+        node = walker.nextNode();
+      }
+      return { parens, lastBeforeCaret };
+    }
+
+    function countMatchedPairs(parensList) {
+      let count = 0;
+      const stack = [];
+      for (let i = 0; i < parensList.length; i++) {
+        if (parensList[i].char === '(') {
+          stack.push(i);
+        } else if (parensList[i].char === ')' && stack.length > 0) {
+          stack.pop();
+          count++;
+        }
+      }
+      return count;
+    }
+
+    /**
+     * Cambia temporalmente el color de los dos paréntesis (`(` y `)`) que acaban de vincularse,
+     * funcionando tanto al cerrar de izquierda a derecha con `)` como de derecha a izquierda con `(`.
+     */
+    function highlightMatchingParens(insertedChar = ')', prevPairsCount = null) {
+      clearParenHighlights();
+
+      const applyHighlightPass = () => {
+        const { parens, lastBeforeCaret } = collectShadowParens();
+        if (parens.length < 2) return;
+
+        // Solo resaltar si la inserción realmente completó un nuevo par vinculado
+        if (prevPairsCount !== null && countMatchedPairs(parens) <= prevPairsCount) {
+          return;
+        }
+
+        let targetIdx = -1;
+        if (lastBeforeCaret >= 0 && parens[lastBeforeCaret].char === insertedChar) {
+          targetIdx = lastBeforeCaret;
+        } else if (lastBeforeCaret + 1 < parens.length && parens[lastBeforeCaret + 1].char === insertedChar) {
+          targetIdx = lastBeforeCaret + 1;
+        } else if (insertedChar === ')') {
+          for (let i = parens.length - 1; i >= 0; i--) {
+            if (parens[i].char === ')') { targetIdx = i; break; }
+          }
+        } else {
+          for (let i = 0; i < parens.length; i++) {
+            if (parens[i].char === '(') { targetIdx = i; break; }
+          }
+        }
+        if (targetIdx === -1) return;
+
+        let matchIdx = -1;
+        if (insertedChar === ')') {
+          // Buscar hacia atrás (←) el '(' que equilibra el nivel de anidamiento
+          let depth = 1;
+          for (let i = targetIdx - 1; i >= 0; i--) {
+            if (parens[i].char === ')') depth++;
+            else if (parens[i].char === '(') {
+              depth--;
+              if (depth === 0) {
+                matchIdx = i;
+                break;
+              }
+            }
+          }
+        } else {
+          // Buscar hacia adelante (→) el ')' que equilibra el nivel de anidamiento
+          let depth = 1;
+          for (let i = targetIdx + 1; i < parens.length; i++) {
+            if (parens[i].char === '(') depth++;
+            else if (parens[i].char === ')') {
+              depth--;
+              if (depth === 0) {
+                matchIdx = i;
+                break;
+              }
+            }
+          }
+        }
+
+        if (matchIdx === -1) return;
+
+        [parens[targetIdx].el, parens[matchIdx].el].forEach((el) => {
+          el.style.transition = 'color 0.18s ease';
+          el.style.color = '#0284c7';
+          activeParenSpans.push(el);
+        });
+      };
+
+      requestAnimationFrame(() => {
+        applyHighlightPass();
+        requestAnimationFrame(applyHighlightPass);
+      });
+
+      parenHighlightTimer = setTimeout(() => {
+        clearParenHighlights();
+      }, 950);
+    }
+
+    /**
+     * Inserta una expresión o plantilla LaTeX 2D con cajas editables (#?) en el <math-field>
+     */
+    function insertLatex(latexSnippet) {
+      clearParenHighlights();
+      pushUndoState();
+      mf.focus();
+      mf.insert(latexSnippet, {
+        format: 'latex',
+        selectionMode: 'placeholder',
+        smartFence: false
+      });
+    }
+
+    mf.addEventListener('input', () => {
+      pushUndoState();
+    });
+
+    function evaluateCurrentInput(forceApprox = false) {
+      if (modalNav.isOpen) {
+        activateFocusedModalItem();
+        return;
+      }
+
+      // Si hay un Resultado o Cálculo resaltado en el historial, Enter lo copia a la línea de edición (como en TI-Nspire)
+      if (selectedHistoryIndex >= 0 && historyRecords[selectedHistoryIndex]) {
+        insertLatex(historyRecords[selectedHistoryIndex].getCopyLatex());
+        selectedHistoryIndex = -1;
+        highlightHistoryRow();
+        return;
+      }
+
+      const currentLatex = mf.getValue('latex').trim();
+      if (!currentLatex || !casWorker) return;
+
+      casWorker.postMessage({
+        id: ++reqCounter,
+        type: 'EVAL',
+        expr: currentLatex,
+        inputLatex: currentLatex,
+        forceApprox
+      });
+
+      mf.setValue('');
+      selectedHistoryIndex = -1;
+      highlightHistoryRow();
+      mf.focus();
+    }
+
+    function fitMathToRow(containerEl) {
+      const katexEl = containerEl.querySelector('.katex');
+      if (!katexEl) return;
+      katexEl.style.fontSize = '';
+      requestAnimationFrame(() => {
+        const availH = containerEl.clientHeight;
+        const contentH = katexEl.scrollHeight || katexEl.offsetHeight;
+        if (availH > 0 && contentH > availH - 2) {
+          const scale = Math.max(0.52, (availH - 2) / contentH);
+          katexEl.style.fontSize = `${(scale * 100).toFixed(1)}%`;
+        }
+      });
+    }
+
+    window.addEventListener('resize', () => {
+      historyRecords.forEach((rec) => fitMathToRow(rec.el));
+    });
+
+    function renderHistoryItem(data) {
+      const { status, inputExpr, inputLatex, exactLatex, approxLatex, raw, approxRaw, error } = data;
+      const itemEl = document.createElement('div');
+      itemEl.className = 'history-item';
+
+      // 1. Nodo seleccionable de CÁLCULO (Entrada superior izquierda)
+      const inDiv = document.createElement('div');
+      inDiv.className = 'history-input';
+      const cleanInputLatex = (inputLatex || inputExpr || '').replace(/\\placeholder\{\}/g, '\\square');
+      if (window.katex && cleanInputLatex) {
+        try {
+          katex.render(cleanInputLatex, inDiv, { throwOnError: false, displayMode: false });
+          fitMathToRow(inDiv);
+        } catch (_) {
+          inDiv.textContent = inputExpr;
+        }
+      } else {
+        inDiv.textContent = inputExpr;
+      }
+      const getInputCopyLatex = () => inputLatex || inputExpr;
+      inDiv.title = 'Cálculo anterior (Clic o ▲ + Enter para copiar a la entrada)';
+      inDiv.addEventListener('click', () => {
+        selectedHistoryIndex = -1;
+        highlightHistoryRow();
+        insertLatex(getInputCopyLatex());
+      });
+      itemEl.appendChild(inDiv);
+
+      // 2. Nodo seleccionable de RESULTADO (Salida inferior derecha)
+      const outRow = document.createElement('div');
+      outRow.className = 'history-output-row';
+
+      const outDiv = document.createElement('div');
+      outDiv.className = 'history-output';
+
+      let showingApprox = false;
+      const getOutputCopyLatex = () => {
+        if (status === 'ERROR') return getInputCopyLatex();
+        return showingApprox ? (approxLatex || approxRaw) : (exactLatex || raw);
+      };
+
+      if (status === 'ERROR') {
+        outDiv.style.color = '#dc2626';
+        outDiv.style.fontSize = '0.8rem';
+        outDiv.textContent = error;
+      } else {
+        lastCapturedLatex = exactLatex || raw;
+        const renderMath = () => {
+          const latex = showingApprox ? approxLatex : exactLatex;
+          try {
+            katex.render(latex, outDiv, { throwOnError: false, displayMode: false });
+            fitMathToRow(outDiv);
+          } catch (_) {
+            outDiv.textContent = showingApprox ? (approxRaw || raw) : raw;
+          }
+        };
+        renderMath();
+
+        outDiv.title = 'Resultado anterior (Clic o ▲ + Enter para copiar a la entrada)';
+        outDiv.addEventListener('click', () => {
+          selectedHistoryIndex = -1;
+          highlightHistoryRow();
+          insertLatex(getOutputCopyLatex());
+        });
+
+        if (exactLatex !== approxLatex) {
+          const approxBtn = document.createElement('button');
+          approxBtn.className = 'approx-chip';
+          approxBtn.textContent = '≈';
+          approxBtn.title = 'Alternar Exacto (=) / Aproximado (≈)';
+          approxBtn.addEventListener('click', () => {
+            showingApprox = !showingApprox;
+            approxBtn.textContent = showingApprox ? '=' : '≈';
+            renderMath();
+          });
+          outRow.appendChild(approxBtn);
+        }
+      }
+
+      outRow.appendChild(outDiv);
+      itemEl.appendChild(outRow);
+      historyEl.appendChild(itemEl);
+      historyEl.scrollTop = historyEl.scrollHeight;
+
+      // Registrar por separado el Cálculo (primero) y el Resultado (después)
+      // Así al pulsar ▲ desde abajo se selecciona primero el Resultado y luego el Cálculo
+      historyRecords.push({
+        el: inDiv,
+        kind: 'input',
+        getCopyLatex: getInputCopyLatex
+      });
+      historyRecords.push({
+        el: outDiv,
+        kind: 'output',
+        getCopyLatex: getOutputCopyLatex
+      });
+    }
+
+    function highlightHistoryRow() {
+      historyRecords.forEach((rec, idx) => {
+        rec.el.classList.toggle('selected-row', idx === selectedHistoryIndex);
+        if (idx === selectedHistoryIndex) {
+          rec.el.scrollIntoView({ block: 'nearest' });
+        }
+      });
+    }
+
+    // =========================================================
+    // MOTOR DE MENÚS Y PALETAS CON NAVEGACIÓN POR FLECHAS
+    // =========================================================
+    function openModal(title, renderFn, options = {}) {
+      modalTitleEl.textContent = title;
+      modalBodyEl.innerHTML = '';
+      modalNav.isOpen = true;
+      modalNav.mode = options.mode || 'list';
+      modalNav.cols = options.cols || 4;
+      modalNav.onBack = options.onBack || null;
+      modalNav.onSwitchTab = options.onSwitchTab || null;
+
+      renderFn(modalBodyEl);
+      modalEl.classList.add('open');
+
+      const selector = modalNav.mode === 'grid' ? '.palette-cell' : '.menu-row';
+      modalNav.items = Array.from(modalBodyEl.querySelectorAll(selector));
+      modalNav.focusIndex = Math.min(options.initialIndex || 0, Math.max(0, modalNav.items.length - 1));
+      updateModalFocus();
+    }
+
+    function closeModal() {
+      modalEl.classList.remove('open');
+      modalNav.isOpen = false;
+      modalNav.items = [];
+      modalNav.onBack = null;
+      modalNav.onSwitchTab = null;
+      mf.focus();
+    }
+
+    function updateModalFocus() {
+      modalNav.items.forEach((el, idx) => {
+        const isFocused = idx === modalNav.focusIndex;
+        el.classList.toggle('focused-item', isFocused);
+        if (isFocused) {
+          el.scrollIntoView({ block: 'nearest' });
+        }
+      });
+    }
+
+    function moveModalFocus(dir) {
+      const len = modalNav.items.length;
+      if (len === 0) return;
+
+      if (modalNav.mode === 'list') {
+        if (dir === 'down') {
+          modalNav.focusIndex = (modalNav.focusIndex + 1) % len;
+          updateModalFocus();
+        } else if (dir === 'up') {
+          modalNav.focusIndex = (modalNav.focusIndex - 1 + len) % len;
+          updateModalFocus();
+        } else if (dir === 'right') {
+          const curItem = modalNav.items[modalNav.focusIndex];
+          if (curItem && curItem.dataset.hasSubmenu === 'true') {
+            curItem.click();
+          } else if (modalNav.onSwitchTab) {
+            modalNav.onSwitchTab();
+          }
+        } else if (dir === 'left') {
+          if (modalNav.onBack) {
+            modalNav.onBack();
+          } else if (modalNav.onSwitchTab) {
+            modalNav.onSwitchTab();
+          }
+        }
+      } else {
+        // Modo cuadrícula 2D ('grid')
+        const cols = modalNav.cols || 4;
+        if (dir === 'right') {
+          modalNav.focusIndex = (modalNav.focusIndex + 1) % len;
+        } else if (dir === 'left') {
+          modalNav.focusIndex = (modalNav.focusIndex - 1 + len) % len;
+        } else if (dir === 'down') {
+          modalNav.focusIndex = (modalNav.focusIndex + cols) % len;
+        } else if (dir === 'up') {
+          modalNav.focusIndex = (modalNav.focusIndex - cols + len) % len;
+        }
+        updateModalFocus();
+      }
+    }
+
+    function activateFocusedModalItem() {
+      const target = modalNav.items[modalNav.focusIndex];
+      if (target) target.click();
+    }
+
+    document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+
+    function renderGridPalette(container, items) {
+      const grid = document.createElement('div');
+      grid.className = 'palette-grid';
+      items.forEach(({ label, katexPreview, latex }) => {
+        const cell = document.createElement('button');
+        cell.className = 'palette-cell';
+        if (katexPreview && window.katex) {
+          try {
+            katex.render(katexPreview, cell, { throwOnError: false, displayMode: false });
+          } catch (_) {
+            cell.textContent = label;
+          }
+        } else {
+          cell.textContent = label;
+        }
+        cell.addEventListener('click', () => {
+          closeModal();
+          insertLatex(latex);
+        });
+        grid.appendChild(cell);
+      });
+      container.appendChild(grid);
+    }
+
+    // 1. Paleta Trigonométrica (trig▸)
+    function openTrigPalette() {
+      openModal('Trigonometría (trig▸)', (body) => {
+        renderGridPalette(body, [
+          { label: 'sin', katexPreview: '\\sin(\\square)', latex: '\\sin\\left(#?\\right)' },
+          { label: 'cos', katexPreview: '\\cos(\\square)', latex: '\\cos\\left(#?\\right)' },
+          { label: 'tan', katexPreview: '\\tan(\\square)', latex: '\\tan\\left(#?\\right)' },
+          { label: 'csc', katexPreview: '\\csc(\\square)', latex: '\\csc\\left(#?\\right)' },
+          { label: 'sec', katexPreview: '\\sec(\\square)', latex: '\\sec\\left(#?\\right)' },
+          { label: 'cot', katexPreview: '\\cot(\\square)', latex: '\\cot\\left(#?\\right)' },
+          { label: 'sin⁻¹', katexPreview: '\\sin^{-1}(\\square)', latex: '\\sin^{-1}\\left(#?\\right)' },
+          { label: 'cos⁻¹', katexPreview: '\\cos^{-1}(\\square)', latex: '\\cos^{-1}\\left(#?\\right)' },
+          { label: 'tan⁻¹', katexPreview: '\\tan^{-1}(\\square)', latex: '\\tan^{-1}\\left(#?\\right)' },
+          { label: 'csc⁻¹', katexPreview: '\\csc^{-1}(\\square)', latex: '\\csc^{-1}\\left(#?\\right)' },
+          { label: 'sec⁻¹', katexPreview: '\\sec^{-1}(\\square)', latex: '\\sec^{-1}\\left(#?\\right)' },
+          { label: 'cot⁻¹', katexPreview: '\\cot^{-1}(\\square)', latex: '\\cot^{-1}\\left(#?\\right)' }
+        ]);
+      }, { mode: 'grid', cols: 4 });
+    }
+
+    // 2. Paleta de Relaciones y Restricción (ctrl + =)
+    function openRelationsPalette() {
+      openModal('Relaciones y Restricción (| ≠ ≥)', (body) => {
+        renderGridPalette(body, [
+          { label: '=', katexPreview: '=', latex: '=' },
+          { label: '≠', katexPreview: '\\neq', latex: '\\neq ' },
+          { label: '<', katexPreview: '<', latex: '<' },
+          { label: '>', katexPreview: '>', latex: '>' },
+          { label: '≤', katexPreview: '\\le', latex: '\\le ' },
+          { label: '≥', katexPreview: '\\ge', latex: '\\ge ' },
+          { label: '|', katexPreview: '\\mid \\text{ (tal que)}', latex: ' \\mid ' }
+        ]);
+      }, { mode: 'grid', cols: 4 });
+    }
+
+    // 3. Paleta de Constantes (π▸)
+    function openPiPalette() {
+      openModal('Constantes y Ángulos (π▸)', (body) => {
+        renderGridPalette(body, [
+          { label: 'π', katexPreview: '\\pi', latex: '\\pi ' },
+          { label: '𝑖', katexPreview: 'i', latex: '\\imaginaryI ' },
+          { label: '∞', katexPreview: '\\infty', latex: '\\infty ' },
+          { label: 'e', katexPreview: 'e', latex: '\\exponentialE ' },
+          { label: 'θ', katexPreview: '\\theta', latex: '\\theta ' },
+          { label: '°', katexPreview: '^\\circ', latex: '°' }
+        ]);
+      }, { mode: 'grid', cols: 3 });
+    }
+
+    // 4. Paleta de Puntuación (?!▸)
+    function openPunctPalette() {
+      openModal('Puntuación y Operadores (?!▸)', (body) => {
+        renderGridPalette(body, [
+          { label: '!', katexPreview: 'n!', latex: '!' },
+          { label: 'Subíndice', katexPreview: 'x_{\\square}', latex: '_{#?}' },
+          { label: '|', katexPreview: '\\mid', latex: ' \\mid ' },
+          { label: ':', katexPreview: ':', latex: ':' },
+          { label: ';', katexPreview: ';', latex: ';' },
+          { label: '?', katexPreview: '?', latex: '?' }
+        ]);
+      }, { mode: 'grid', cols: 3 });
+    }
+
+    // 5. Paleta Visual de Plantillas Matemáticas 2D con Cajas Editables (|□|{□)
+    function openTemplatesPalette() {
+      openModal('Plantillas Matemáticas 2D (|□|{□)', (body) => {
+        renderGridPalette(body, [
+          { label: 'a/b', katexPreview: '\\frac{\\square}{\\square}', latex: '\\frac{#0}{#?}' },
+          { label: 'xⁿ', katexPreview: '\\square^{\\square}', latex: '^{#?}' },
+          { label: '√x', katexPreview: '\\sqrt{\\square}', latex: '\\sqrt{#?}' },
+          { label: 'ⁿ√x', katexPreview: '\\sqrt[\\square]{\\square}', latex: '\\sqrt[#?]{#?}' },
+          { label: 'eˣ', katexPreview: 'e^{\\square}', latex: '\\exponentialE^{#?}' },
+          { label: 'log_b', katexPreview: '\\log_{\\square}(\\square)', latex: '\\log_{#?}\\left(#?\\right)' },
+          { label: '|x|', katexPreview: '\\left|\\square\\right|', latex: '\\left|#?\\right|' },
+          { label: 'd/dx', katexPreview: '\\frac{\\mathrm{d}}{\\mathrm{d}\\square}(\\square)', latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)' },
+          { label: 'd²/dx²', katexPreview: '\\frac{\\mathrm{d}^2}{\\mathrm{d}\\square^2}(\\square)', latex: '\\frac{\\mathrm{d}^{2}}{\\mathrm{d}#?^{2}}\\left(#?\\right)' },
+          { label: 'dⁿ/dxⁿ', katexPreview: '\\frac{\\mathrm{d}^{\\square}}{\\mathrm{d}\\square^{\\square}}(\\square)', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
+          { label: '∫ f dx', katexPreview: '\\int \\square\\,\\mathrm{d}\\square', latex: '\\int #? \\, \\mathrm{d}#?' },
+          { label: '∫ₐᵇ f dx', katexPreview: '\\int_{\\square}^{\\square} \\square\\,\\mathrm{d}\\square', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?' },
+          { label: '∑ sum', katexPreview: '\\sum_{\\square=\\square}^{\\square}(\\square)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
+          { label: '∏ prod', katexPreview: '\\prod_{\\square=\\square}^{\\square}(\\square)', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
+          { label: 'lim', katexPreview: '\\lim_{\\square\\to\\square}(\\square)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
+          { label: '[2×2]', katexPreview: '\\begin{bmatrix}\\square&\\square\\\\\\square&\\square\\end{bmatrix}', latex: '\\begin{bmatrix} #? & #? \\\\ #? & #? \\end{bmatrix}' },
+          { label: '[1×2]', katexPreview: '\\begin{bmatrix}\\square&\\square\\end{bmatrix}', latex: '\\begin{bmatrix} #? & #? \\end{bmatrix}' },
+          { label: '[2×1]', katexPreview: '\\begin{bmatrix}\\square\\\\\\square\\end{bmatrix}', latex: '\\begin{bmatrix} #? \\\\ #? \\end{bmatrix}' },
+          { label: '[3×3]', katexPreview: '\\begin{bmatrix}\\square&\\square&\\square\\\\\\square&\\square&\\square\\\\\\square&\\square&\\square\\end{bmatrix}', latex: '\\begin{bmatrix} #? & #? & #? \\\\ #? & #? & #? \\\\ #? & #? & #? \\end{bmatrix}' },
+          { label: 'Sist 2×2', katexPreview: '\\left\\{\\begin{array}{l}\\square=\\square\\\\\\square=\\square\\end{array}\\right.', latex: '\\mathrm{solve}\\left(\\left[#?=#?, #?=#?\\right], \\left[x, y\\right]\\right)' }
+        ]);
+      }, { mode: 'grid', cols: 4 });
+    }
+
+    // 6. Catálogo Oficial (📖) y Paleta de Símbolos (∞β°)
+    function openCatalogModal(initialTab = 'CAT') {
+      const nextTab = initialTab === 'CAT' ? 'SYM' : 'CAT';
+      openModal(
+        initialTab === 'SYM' ? 'Paleta de Símbolos (∞β°) [◀/▶ Pestaña]' : 'Catálogo TI-Nspire CAS (📖) [◀/▶ Pestaña]',
+        (body) => {
+          const tabBar = document.createElement('div');
+          tabBar.style.display = 'flex';
+          tabBar.style.gap = '4px';
+          tabBar.style.marginBottom = '6px';
+
+          const btnCat = document.createElement('button');
+          btnCat.className = 'approx-chip';
+          if (initialTab === 'CAT') { btnCat.style.background = '#0284c7'; btnCat.style.color = '#fff'; }
+          btnCat.textContent = '1: Comandos A–Z';
+          btnCat.onclick = () => openCatalogModal('CAT');
+
+          const btnSym = document.createElement('button');
+          btnSym.className = 'approx-chip';
+          if (initialTab === 'SYM') { btnSym.style.background = '#0284c7'; btnSym.style.color = '#fff'; }
+          btnSym.textContent = '2: Símbolos ∞β°';
+          btnSym.onclick = () => openCatalogModal('SYM');
+
+          tabBar.appendChild(btnCat);
+          tabBar.appendChild(btnSym);
+          body.appendChild(tabBar);
+
+          if (initialTab === 'SYM') {
+            renderGridPalette(body, [
+              { label: 'α', katexPreview: '\\alpha', latex: '\\alpha ' },
+              { label: 'β', katexPreview: '\\beta', latex: '\\beta ' },
+              { label: 'γ', katexPreview: '\\gamma', latex: '\\gamma ' },
+              { label: 'δ', katexPreview: '\\delta', latex: '\\delta ' },
+              { label: 'ε', katexPreview: '\\epsilon', latex: '\\epsilon ' },
+              { label: 'θ', katexPreview: '\\theta', latex: '\\theta ' },
+              { label: 'λ', katexPreview: '\\lambda', latex: '\\lambda ' },
+              { label: 'μ', katexPreview: '\\mu', latex: '\\mu ' },
+              { label: 'π', katexPreview: '\\pi', latex: '\\pi ' },
+              { label: 'ρ', katexPreview: '\\rho', latex: '\\rho ' },
+              { label: 'σ', katexPreview: '\\sigma', latex: '\\sigma ' },
+              { label: 'τ', katexPreview: '\\tau', latex: '\\tau ' },
+              { label: 'φ', katexPreview: '\\phi', latex: '\\phi ' },
+              { label: 'ω', katexPreview: '\\omega', latex: '\\omega ' },
+              { label: 'Δ', katexPreview: '\\Delta', latex: '\\Delta ' },
+              { label: 'Σ', katexPreview: '\\Sigma', latex: '\\Sigma ' },
+              { label: 'Ω', katexPreview: '\\Omega', latex: '\\Omega ' },
+              { label: '∞', katexPreview: '\\infty', latex: '\\infty ' },
+              { label: '𝑖', katexPreview: 'i', latex: '\\imaginaryI ' },
+              { label: ':=', katexPreview: ':=', latex: ':=' },
+              { label: '→', katexPreview: '\\to', latex: ' \\to ' },
+              { label: '°', katexPreview: '^\\circ', latex: '°' }
+            ]);
+            return;
+          }
+
+          const catalogCommands = [
+            { name: 'abs(x)', latex: '\\left|#?\\right|', desc: 'Valor absoluto o módulo' },
+            { name: 'approx(expr)', latex: '\\mathrm{approx}\\left(#?\\right)', desc: 'Aproximación decimal' },
+            { name: 'arcLen(expr, var, a, b)', latex: '\\mathrm{arcLen}\\left(#?, x, #?, #?\\right)', desc: 'Longitud de arco' },
+            { name: 'binomCdf(n, p, low, up)', latex: '\\mathrm{binomCdf}\\left(#?, #?, #?, #?\\right)', desc: 'Acumulada Binomial' },
+            { name: 'binomPdf(n, p, x)', latex: '\\mathrm{binomPdf}\\left(#?, #?, #?\\right)', desc: 'Densidad Binomial puntual' },
+            { name: 'ceiling(x)', latex: '\\mathrm{ceiling}\\left(#?\\right)', desc: 'Menor entero >= x' },
+            { name: 'cFactor(expr)', latex: '\\mathrm{cFactor}\\left(#?\\right)', desc: 'Factoriza en complejos' },
+            { name: 'chi2Cdf(low, up, df)', latex: '\\mathrm{chi2Cdf}\\left(#?, #?, #?\\right)', desc: 'Acumulada Chi-cuadrado' },
+            { name: 'chi2Pdf(x, df)', latex: '\\mathrm{chi2Pdf}\\left(#?, #?\\right)', desc: 'Densidad Chi-cuadrado' },
+            { name: 'ClearAZ', latex: '\\mathrm{ClearAZ}', desc: 'Borra variables a–z' },
+            { name: 'completeSquare(expr, var)', latex: '\\mathrm{completeSquare}\\left(#?, x\\right)', desc: 'Completa el cuadrado' },
+            { name: 'conj(z)', latex: '\\mathrm{conj}\\left(#?\\right)', desc: 'Conjugado complejo' },
+            { name: 'crossP(u, v)', latex: '\\mathrm{crossP}\\left(\\left[#?, #?, #?\\right], \\left[#?, #?, #?\\right]\\right)', desc: 'Producto vectorial' },
+            { name: 'cSolve(eq, var)', latex: '\\mathrm{cSolve}\\left(#?=#?, x\\right)', desc: 'Resuelve en complejos' },
+            { name: 'cZeros(expr, var)', latex: '\\mathrm{cZeros}\\left(#?, x\\right)', desc: 'Raíces complejas' },
+            { name: 'Define f(x) = expr', latex: '\\mathrm{Define}\\ f\\left(x\\right)=#?', desc: 'Define función o variable' },
+            { name: 'DelVar x', latex: '\\mathrm{DelVar}\\ #?', desc: 'Borra variable de memoria' },
+            { name: 'deSolve(ode, x, y)', latex: "\\mathrm{deSolve}\\left(y'=#?, x, y\\right)", desc: 'Ecuación diferencial' },
+            { name: 'det(matriz)', latex: '\\mathrm{det}\\left(#?\\right)', desc: 'Determinante de matriz' },
+            { name: 'diff (Derivada 2D)', latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)', desc: 'Derivada simbólica 2D' },
+            { name: 'dotP(u, v)', latex: '\\mathrm{dotP}\\left(\\left[#?, #?\\right], \\left[#?, #?\\right]\\right)', desc: 'Producto escalar' },
+            { name: 'eigVc(matriz)', latex: '\\mathrm{eigVc}\\left(#?\\right)', desc: 'Autovectores' },
+            { name: 'eigVl(matriz)', latex: '\\mathrm{eigVl}\\left(#?\\right)', desc: 'Autovalores' },
+            { name: 'exact(expr)', latex: '\\mathrm{exact}\\left(#?\\right)', desc: 'Racional exacto' },
+            { name: 'expand(expr)', latex: '\\mathrm{expand}\\left(#?\\right)', desc: 'Expande expresión' },
+            { name: 'factor(expr)', latex: '\\mathrm{factor}\\left(#?\\right)', desc: 'Factoriza expresión' },
+            { name: 'floor(x)', latex: '\\mathrm{floor}\\left(#?\\right)', desc: 'Parte entera inferior' },
+            { name: 'gcd(a, b)', latex: '\\mathrm{gcd}\\left(#?, #?\\right)', desc: 'Máximo común divisor' },
+            { name: 'identity(n)', latex: '\\mathrm{identity}\\left(#?\\right)', desc: 'Matriz identidad n×n' },
+            { name: 'ifactor(n)', latex: '\\mathrm{ifactor}\\left(#?\\right)', desc: 'Factores primos de entero' },
+            { name: 'impDiff(eq, x, y)', latex: '\\mathrm{impDiff}\\left(#?=#?, x, y\\right)', desc: 'Derivación implícita' },
+            { name: 'integrate (Integral 2D)', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?', desc: 'Integral definida 2D' },
+            { name: 'invNorm(area, μ, σ)', latex: '\\mathrm{invNorm}\\left(#?, 0, 1\\right)', desc: 'Inversa Normal' },
+            { name: 'invT(area, df)', latex: '\\mathrm{invT}\\left(#?, #?\\right)', desc: 'Inversa t-Student' },
+            { name: 'lcm(a, b)', latex: '\\mathrm{lcm}\\left(#?, #?\\right)', desc: 'Mínimo común múltiplo' },
+            { name: 'limit (Límite 2D)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)', desc: 'Límite simbólico 2D' },
+            { name: 'nCr(n, r)', latex: '\\mathrm{nCr}\\left(#?, #?\\right)', desc: 'Combinaciones' },
+            { name: 'normCdf(low, up, μ, σ)', latex: '\\mathrm{normCdf}\\left(#?, #?, 0, 1\\right)', desc: 'Acumulada Normal' },
+            { name: 'normPdf(x, μ, σ)', latex: '\\mathrm{normPdf}\\left(#?, 0, 1\\right)', desc: 'Densidad Normal' },
+            { name: 'nPr(n, r)', latex: '\\mathrm{nPr}\\left(#?, #?\\right)', desc: 'Permutaciones' },
+            { name: 'nSolve(eq, var)', latex: '\\mathrm{nSolve}\\left(#?=#?, x\\right)', desc: 'Resolución numérica' },
+            { name: 'poissCdf(λ, low, up)', latex: '\\mathrm{poissCdf}\\left(#?, #?, #?\\right)', desc: 'Acumulada Poisson' },
+            { name: 'poissPdf(λ, x)', latex: '\\mathrm{poissPdf}\\left(#?, #?\\right)', desc: 'Densidad Poisson' },
+            { name: 'propFrac(expr)', latex: '\\mathrm{propFrac}\\left(#?\\right)', desc: 'Fracciones parciales' },
+            { name: 'rref(matriz)', latex: '\\mathrm{rref}\\left(#?\\right)', desc: 'Escalonada reducida' },
+            { name: 'solve(eq, var)', latex: '\\mathrm{solve}\\left(#?=#?, x\\right)', desc: 'Resuelve ecuación' },
+            { name: 'sum (Sumatoria 2D)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)', desc: 'Sumatoria simbólica 2D' },
+            { name: 'taylor(expr, var, n, x0)', latex: '\\mathrm{taylor}\\left(#?, x, 5, 0\\right)', desc: 'Polinomio de Taylor' },
+            { name: 'tCdf(low, up, df)', latex: '\\mathrm{tCdf}\\left(#?, #?, #?\\right)', desc: 'Acumulada t-Student' },
+            { name: 'transpose(matriz)', latex: '\\mathrm{transpose}\\left(#?\\right)', desc: 'Traspuesta de matriz' },
+            { name: 'zeros(expr, var)', latex: '\\mathrm{zeros}\\left(#?, x\\right)', desc: 'Raíces de expresión' }
+          ];
+
+          const list = document.createElement('div');
+          list.className = 'menu-list';
+          catalogCommands.forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'menu-row';
+            row.innerHTML = `<span><strong>${item.name}</strong></span><small>${item.desc}</small>`;
+            row.addEventListener('click', () => {
+              closeModal();
+              insertLatex(item.latex);
+            });
+            list.appendChild(row);
+          });
+          body.appendChild(list);
+        },
+        {
+          mode: initialTab === 'SYM' ? 'grid' : 'list',
+          cols: 4,
+          onSwitchTab: () => openCatalogModal(nextTab)
+        }
+      );
+    }
+
+    // 7. Menú Principal de Calculadora TI-Nspire CAS (Navegable 100% con ▲/▼/◀/▶ y atajos 1–9)
+    const TI_CAS_MENU = [
+      {
+        shortcut: '1',
+        title: '1: Acciones (Actions)',
+        items: [
+          { shortcut: '1', label: '1: Define', latex: '\\mathrm{Define}\\ f\\left(x\\right)=#?' },
+          { shortcut: '2', label: '2: Delete Variable (DelVar)', latex: '\\mathrm{DelVar}\\ #?' },
+          { shortcut: '3', label: '3: Clear a–z', action: () => casWorker?.postMessage({ id: ++reqCounter, type: 'EVAL', expr: 'ClearAZ', inputLatex: '\\text{Clear a–z}' }) },
+          { shortcut: '4', label: '4: Clear History / Reset CAS', action: () => casWorker?.postMessage({ id: ++reqCounter, type: 'RESET_NAMESPACE' }) }
+        ]
+      },
+      {
+        shortcut: '2',
+        title: '2: Número (Number)',
+        items: [
+          { shortcut: '1', label: '1: Convert to Decimal (approx)', latex: '\\mathrm{approx}\\left(#?\\right)' },
+          { shortcut: '2', label: '2: Approximate to Fraction (exact)', latex: '\\mathrm{exact}\\left(#?\\right)' },
+          { shortcut: '3', label: '3: Factor Integer (ifactor)', latex: '\\mathrm{ifactor}\\left(#?\\right)' },
+          { shortcut: '4', label: '4: Least Common Multiple (lcm)', latex: '\\mathrm{lcm}\\left(#?, #?\\right)' },
+          { shortcut: '5', label: '5: Greatest Common Divisor (gcd)', latex: '\\mathrm{gcd}\\left(#?, #?\\right)' },
+          { shortcut: '6', label: '6: Remainder (irem)', latex: '\\mathrm{irem}\\left(#?, #?\\right)' },
+          { shortcut: '7', label: '7: Proper Fraction / Partial (propFrac)', latex: '\\mathrm{propFrac}\\left(#?\\right)' },
+          { shortcut: '8', label: '8: Complex Conjugate (conj)', latex: '\\mathrm{conj}\\left(#?\\right)' },
+          { shortcut: '9', label: '9: Real Part (real)', latex: '\\mathrm{real}\\left(#?\\right)' }
+        ]
+      },
+      {
+        shortcut: '3',
+        title: '3: Álgebra (Algebra)',
+        items: [
+          { shortcut: '1', label: '1: Solve', latex: '\\mathrm{solve}\\left(#?=#?, x\\right)' },
+          { shortcut: '2', label: '2: Factor', latex: '\\mathrm{factor}\\left(#?\\right)' },
+          { shortcut: '3', label: '3: Expand', latex: '\\mathrm{expand}\\left(#?\\right)' },
+          { shortcut: '4', label: '4: Zeros', latex: '\\mathrm{zeros}\\left(#?, x\\right)' },
+          { shortcut: '5', label: '5: Complete the Square', latex: '\\mathrm{completeSquare}\\left(#?, x\\right)' },
+          { shortcut: '6', label: '6: Numerical Solve (nSolve)', latex: '\\mathrm{nSolve}\\left(#?=#?, x\\right)' },
+          { shortcut: '7', label: '7: Solve System of Equations (2×2)', latex: '\\mathrm{solve}\\left(\\left[#?=#?, #?=#?\\right], \\left[x, y\\right]\\right)' },
+          { shortcut: '8', label: '8: Complex Solve (cSolve)', latex: '\\mathrm{cSolve}\\left(#?=#?, x\\right)' },
+          { shortcut: '9', label: '9: Complex Factor (cFactor)', latex: '\\mathrm{cFactor}\\left(#?\\right)' },
+          { shortcut: 'a', label: 'A: Complex Zeros (cZeros)', latex: '\\mathrm{cZeros}\\left(#?, x\\right)' }
+        ]
+      },
+      {
+        shortcut: '4',
+        title: '4: Cálculo (Calculus)',
+        items: [
+          { shortcut: '1', label: '1: Derivative (Plantilla 2D d/dx)', latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)' },
+          { shortcut: '2', label: '2: n-th Derivative (Plantilla 2D dⁿ/dxⁿ)', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
+          { shortcut: '3', label: '3: Indefinite Integral (Plantilla 2D ∫)', latex: '\\int #? \\, \\mathrm{d}#?' },
+          { shortcut: '4', label: '4: Definite Integral (Plantilla 2D ∫ₐᵇ)', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?' },
+          { shortcut: '5', label: '5: Limit (Plantilla 2D lim)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
+          { shortcut: '6', label: '6: Sum (Plantilla 2D ∑)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
+          { shortcut: '7', label: '7: Product (Plantilla 2D ∏)', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
+          { shortcut: '8', label: '8: Taylor Polynomial', latex: '\\mathrm{taylor}\\left(#?, x, 5, 0\\right)' },
+          { shortcut: '9', label: '9: Differential Equation Solver (deSolve)', latex: "\\mathrm{deSolve}\\left(y'=#?, x, y\\right)" },
+          { shortcut: 'a', label: 'A: Implicit Differentiation (impDiff)', latex: '\\mathrm{impDiff}\\left(#?=#?, x, y\\right)' }
+        ]
+      },
+      {
+        shortcut: '5',
+        title: '5: Probabilidad (Probability)',
+        items: [
+          { shortcut: '1', label: '1: Factorial (!)', latex: '!' },
+          { shortcut: '2', label: '2: Permutations (nPr)', latex: '\\mathrm{nPr}\\left(#?, #?\\right)' },
+          { shortcut: '3', label: '3: Combinations (nCr)', latex: '\\mathrm{nCr}\\left(#?, #?\\right)' },
+          { shortcut: '4', label: '4: Normal Pdf (normPdf)', latex: '\\mathrm{normPdf}\\left(#?, 0, 1\\right)' },
+          { shortcut: '5', label: '5: Normal Cdf (normCdf)', latex: '\\mathrm{normCdf}\\left(#?, #?, 0, 1\\right)' },
+          { shortcut: '6', label: '6: Inverse Normal (invNorm)', latex: '\\mathrm{invNorm}\\left(#?, 0, 1\\right)' },
+          { shortcut: '7', label: '7: Student-t Cdf (tCdf)', latex: '\\mathrm{tCdf}\\left(#?, #?, #?\\right)' },
+          { shortcut: '8', label: '8: Inverse Student-t (invT)', latex: '\\mathrm{invT}\\left(#?, #?\\right)' },
+          { shortcut: '9', label: '9: Chi-Square Cdf (χ²Cdf)', latex: '\\mathrm{chi2Cdf}\\left(#?, #?, #?\\right)' },
+          { shortcut: 'a', label: 'A: Binomial Pdf (binomPdf)', latex: '\\mathrm{binomPdf}\\left(#?, #?, #?\\right)' },
+          { shortcut: 'b', label: 'B: Binomial Cdf (binomCdf)', latex: '\\mathrm{binomCdf}\\left(#?, #?, #?, #?\\right)' },
+          { shortcut: 'c', label: 'C: Poisson Pdf (poissPdf)', latex: '\\mathrm{poissPdf}\\left(#?, #?\\right)' },
+          { shortcut: 'd', label: 'D: Poisson Cdf (poissCdf)', latex: '\\mathrm{poissCdf}\\left(#?, #?, #?\\right)' }
+        ]
+      },
+      {
+        shortcut: '6',
+        title: '6: Estadística (Statistics)',
+        items: [
+          { shortcut: '1', label: '1: Mean (Media)', latex: '\\mathrm{mean}\\left(\\left[#?, #?\\right]\\right)' },
+          { shortcut: '2', label: '2: Median (Mediana)', latex: '\\mathrm{median}\\left(\\left[#?, #?\\right]\\right)' },
+          { shortcut: '3', label: '3: Standard Deviation (stdDev)', latex: '\\mathrm{stdDev}\\left(\\left[#?, #?\\right]\\right)' },
+          { shortcut: '4', label: '4: Variance (Varianza)', latex: '\\mathrm{variance}\\left(\\left[#?, #?\\right]\\right)' }
+        ]
+      },
+      {
+        shortcut: '7',
+        title: '7: Matriz y Vector (Matrix & Vector)',
+        items: [
+          { shortcut: '1', label: '1: Matriz 2×2 Visual (2D)', latex: '\\begin{bmatrix} #? & #? \\\\ #? & #? \\end{bmatrix}' },
+          { shortcut: '2', label: '2: Matriz 3×3 Visual (2D)', latex: '\\begin{bmatrix} #? & #? & #? \\\\ #? & #? & #? \\\\ #? & #? & #? \\end{bmatrix}' },
+          { shortcut: '3', label: '3: Identity Matrix (identity)', latex: '\\mathrm{identity}\\left(3\\right)' },
+          { shortcut: '4', label: '4: Transpose (Aᵀ)', latex: '\\mathrm{transpose}\\left(#?\\right)' },
+          { shortcut: '5', label: '5: Determinant (det)', latex: '\\mathrm{det}\\left(#?\\right)' },
+          { shortcut: '6', label: '6: Row-Echelon Form (ref)', latex: '\\mathrm{ref}\\left(#?\\right)' },
+          { shortcut: '7', label: '7: Reduced Row-Echelon Form (rref)', latex: '\\mathrm{rref}\\left(#?\\right)' },
+          { shortcut: '8', label: '8: Eigenvalues (eigVl)', latex: '\\mathrm{eigVl}\\left(#?\\right)' },
+          { shortcut: '9', label: '9: Eigenvectors (eigVc)', latex: '\\mathrm{eigVc}\\left(#?\\right)' },
+          { shortcut: 'a', label: 'A: Dot Product (dotP)', latex: '\\mathrm{dotP}\\left(\\left[#?, #?\\right], \\left[#?, #?\\right]\\right)' },
+          { shortcut: 'b', label: 'B: Cross Product (crossP)', latex: '\\mathrm{crossP}\\left(\\left[#?, #?, #?\\right], \\left[#?, #?, #?\\right]\\right)' }
+        ]
+      }
+    ];
+
+    function openMainMenuModal(initialCategoryIdx = 0) {
+      openModal('Menú de Calculadora CAS (▲/▼/▶/enter)', (body) => {
+        const list = document.createElement('div');
+        list.className = 'menu-list';
+        TI_CAS_MENU.forEach((cat, catIdx) => {
+          const row = document.createElement('div');
+          row.className = 'menu-row';
+          row.dataset.hasSubmenu = 'true';
+          row.dataset.shortcut = cat.shortcut;
+          row.innerHTML = `<span>${cat.title}</span><span>▸</span>`;
+          row.addEventListener('click', () => openCategorySubmenu(catIdx));
+          list.appendChild(row);
+        });
+        body.appendChild(list);
+      }, { mode: 'list', initialIndex: initialCategoryIdx });
+    }
+
+    function openCategorySubmenu(catIdx) {
+      const cat = TI_CAS_MENU[catIdx];
+      openModal(
+        `${cat.title} (◀ Volver)`,
+        (subBody) => {
+          const subList = document.createElement('div');
+          subList.className = 'menu-list';
+
+          cat.items.forEach((item) => {
+            const subRow = document.createElement('div');
+            subRow.className = 'menu-row';
+            if (item.shortcut) subRow.dataset.shortcut = item.shortcut;
+            subRow.textContent = item.label;
+            subRow.addEventListener('click', () => {
+              closeModal();
+              if (item.action) item.action();
+              else insertLatex(item.latex);
+            });
+            subList.appendChild(subRow);
+          });
+          subBody.appendChild(subList);
+        },
+        {
+          mode: 'list',
+          initialIndex: 0,
+          onBack: () => openMainMenuModal(catIdx)
+        }
+      );
+    }
+
+    // 8. Menú de Variables en Memoria (var)
+    function openVarsModal() {
+      openModal('Variables en Memoria (var)', (body) => {
+        if (!cachedVariables || cachedVariables.length === 0) {
+          body.innerHTML = '<div style="padding:8px; color:#64748b;">No hay variables definidas en memoria.<br/>Usa <code>:=</code> o <code>ctrl + var (sto→)</code> para almacenar valores o funciones.</div>';
+          return;
+        }
+        const list = document.createElement('div');
+        list.className = 'menu-list';
+        cachedVariables.forEach(({ name, value }) => {
+          const row = document.createElement('div');
+          row.className = 'menu-row';
+          const left = document.createElement('span');
+          left.innerHTML = `<strong>${name}</strong> = <small>${value}</small>`;
+          row.addEventListener('click', () => {
+            closeModal();
+            if (name.includes('(')) {
+              const fnName = name.split('(')[0].trim();
+              insertLatex(`${fnName}\\left(#?\\right)`);
+            } else {
+              insertLatex(name);
+            }
+          });
+          row.appendChild(left);
+
+          if (name !== 'Ans') {
+            const delBtn = document.createElement('button');
+            delBtn.className = 'approx-chip';
+            delBtn.style.color = '#dc2626';
+            delBtn.textContent = 'DelVar';
+            delBtn.onclick = (e) => {
+              e.stopPropagation();
+              const baseName = name.split('(')[0].trim();
+              closeModal();
+              casWorker?.postMessage({
+                id: ++reqCounter,
+                type: 'EVAL',
+                expr: `DelVar ${baseName}`,
+                inputLatex: `\\text{DelVar } ${baseName}`
+              });
+            };
+            row.appendChild(delBtn);
+          }
+          list.appendChild(row);
+        });
+        body.appendChild(list);
+      }, { mode: 'list' });
+    }
+
+    // 9. Menú Contextual (ctrl + menu)
+    function openContextMenuModal() {
+      openModal('Menú Contextual', (body) => {
+        const list = document.createElement('div');
+        list.className = 'menu-list';
+        const actions = [
+          { shortcut: '1', label: '1: Evaluar Aproximado (≈)', run: () => evaluateCurrentInput(true) },
+          { shortcut: '2', label: '2: Almacenar resultado (Ans →)', run: () => insertLatex('\\mathrm{Ans}\\to #?') },
+          { shortcut: '3', label: '3: Cambiar Modo Angular (' + (angleMode === 'RAD' ? 'a DEG' : 'a RAD') + ')', run: toggleAngleMode },
+          { shortcut: '4', label: '4: Limpiar línea de entrada', run: () => { mf.setValue(''); mf.focus(); } },
+          { shortcut: '5', label: '5: Limpiar Historial y Variables (Reset CAS)', run: () => casWorker?.postMessage({ id: ++reqCounter, type: 'RESET_NAMESPACE' }) }
+        ];
+        actions.forEach((act) => {
+          const row = document.createElement('div');
+          row.className = 'menu-row';
+          row.dataset.shortcut = act.shortcut;
+          row.textContent = act.label;
+          row.onclick = () => {
+            closeModal();
+            act.run();
+          };
+          list.appendChild(row);
+        });
+        body.appendChild(list);
+      }, { mode: 'list' });
+    }
+
+    function toggleAngleMode() {
+      const nextMode = angleMode === 'RAD' ? 'DEG' : 'RAD';
+      casWorker?.postMessage({ id: ++reqCounter, type: 'SET_ANGLE_MODE', angleMode: nextMode });
+    }
+
+    angleIndicator.addEventListener('click', toggleAngleMode);
+
+    // =========================================================
+    // DESPACHADOR CENTRAL DE TODAS LAS TECLAS DE LA CARCASA
+    // =========================================================
+    function handleHardwareKey(keyId) {
+      const isCtrl = ctrlActive;
+      if (keyId !== 'ctrl') {
+        setCtrl(false);
+      }
+
+      switch (keyId) {
+        case 'ctrl':
+          setCtrl(!ctrlActive);
+          return;
+
+        case 'shift':
+          if (isCtrl) {
+            setShift(shiftMode === 'CAPS' ? 'OFF' : 'CAPS');
+          } else {
+            setShift(shiftMode === 'ONCE' ? 'OFF' : 'ONCE');
+          }
+          return;
+
+        case 'esc':
+          if (isCtrl) {
+            if (undoStack.length > 1) {
+              undoStack.pop();
+              mf.setValue(undoStack[undoStack.length - 1] || '');
+            } else {
+              mf.setValue('');
+            }
+            mf.focus();
+          } else if (modalNav.isOpen) {
+            if (modalNav.onBack) modalNav.onBack();
+            else closeModal();
+          } else if (selectedHistoryIndex !== -1) {
+            selectedHistoryIndex = -1;
+            highlightHistoryRow();
+          } else {
+            mf.setValue('');
+            mf.focus();
+          }
+          return;
+
+        case 'scratchpad':
+        case 'on':
+        case 'doc':
+        case 'tp-page-up':
+        case 'tp-page-down':
+        case 'tp-page-left':
+        case 'tp-page-right':
+        case 'flag':
+          showToast('Sin acción asignada');
+          return;
+
+        case 'tab':
+          if (modalNav.isOpen) {
+            moveModalFocus(isCtrl ? 'up' : 'down');
+            return;
+          }
+          mf.focus();
+          mf.executeCommand(isCtrl ? 'moveToPreviousPlaceholder' : 'moveToNextPlaceholder');
+          return;
+
+        case 'up': {
+          if (isCtrl) {
+            showToast('Sin acción asignada');
+            return;
+          }
+          if (modalNav.isOpen) {
+            moveModalFocus('up');
+            return;
+          }
+          // Si no estamos en el historial, primero intentamos subir dentro de una estructura 2D (fracción, matriz, integral)
+          if (selectedHistoryIndex === -1 && mf.getValue('latex').trim() !== '') {
+            const beforePos = mf.position;
+            mf.executeCommand('moveUp');
+            if (mf.position !== beforePos) {
+              mf.focus();
+              return;
+            }
+          }
+          // Si ya estamos en el tope de la expresión 2D, subimos por el historial REPL
+          if (historyRecords.length > 0) {
+            if (selectedHistoryIndex === -1) selectedHistoryIndex = historyRecords.length - 1;
+            else if (selectedHistoryIndex > 0) selectedHistoryIndex--;
+            highlightHistoryRow();
+          }
+          return;
+        }
+
+        case 'down': {
+          if (isCtrl) {
+            showToast('Sin acción asignada');
+            return;
+          }
+          if (modalNav.isOpen) {
+            moveModalFocus('down');
+            return;
+          }
+          if (selectedHistoryIndex !== -1) {
+            if (selectedHistoryIndex < historyRecords.length - 1) {
+              selectedHistoryIndex++;
+            } else {
+              selectedHistoryIndex = -1;
+              mf.focus();
+            }
+            highlightHistoryRow();
+            return;
+          }
+          mf.focus();
+          mf.executeCommand('moveDown');
+          return;
+        }
+
+        case 'left':
+          if (isCtrl) {
+            showToast('Sin acción asignada');
+            return;
+          }
+          if (modalNav.isOpen) {
+            moveModalFocus('left');
+            return;
+          }
+          mf.focus();
+          mf.executeCommand('moveToPreviousChar');
+          return;
+
+        case 'right':
+          if (isCtrl) {
+            showToast('Sin acción asignada');
+            return;
+          }
+          if (modalNav.isOpen) {
+            moveModalFocus('right');
+            return;
+          }
+          mf.focus();
+          mf.executeCommand('moveToNextChar');
+          return;
+
+        case 'center-click':
+          if (modalNav.isOpen) {
+            activateFocusedModalItem();
+            return;
+          }
+          if (selectedHistoryIndex >= 0 && historyRecords[selectedHistoryIndex]) {
+            insertLatex(historyRecords[selectedHistoryIndex].getCopyLatex());
+            selectedHistoryIndex = -1;
+            highlightHistoryRow();
+          } else {
+            evaluateCurrentInput(false);
+          }
+          return;
+
+        case 'menu':
+          if (isCtrl) openContextMenuModal();
+          else openMainMenuModal();
+          return;
+
+        case 'var':
+          if (isCtrl) insertLatex('\\to ');
+          else openVarsModal();
+          return;
+
+        case 'del':
+          if (modalNav.isOpen) {
+            closeModal();
+            return;
+          }
+          if (isCtrl) {
+            pushUndoState();
+            mf.setValue('');
+            mf.focus();
+          } else {
+            pushUndoState();
+            mf.focus();
+            mf.executeCommand('deleteBackward');
+          }
+          return;
+
+        case 'equals':
+          if (isCtrl) openRelationsPalette();
+          else insertLatex('=');
+          return;
+
+        case 'trig':
+          if (isCtrl) openCatalogModal('CAT');
+          else openTrigPalette();
+          return;
+
+        case 'power':
+          if (isCtrl) insertLatex('\\sqrt[#?]{#?}');
+          else insertLatex('^{#?}');
+          return;
+
+        case 'square':
+          if (isCtrl) insertLatex('\\sqrt{#?}');
+          else insertLatex('^{2}');
+          return;
+
+        case 'exp':
+          if (isCtrl) insertLatex('\\ln\\left(#?\\right)');
+          else insertLatex('\\exponentialE^{#?}');
+          return;
+
+        case 'tenpow':
+          if (isCtrl) insertLatex('\\log_{#?}\\left(#?\\right)');
+          else insertLatex('10^{#?}');
+          return;
+
+        case 'lparen':
+          if (isCtrl) insertLatex('\\left[#?\\right]');
+          else {
+            const prevPairs = countMatchedPairs(collectShadowParens().parens);
+            insertLatex('(');
+            highlightMatchingParens('(', prevPairs);
+          }
+          return;
+
+        case 'rparen':
+          if (isCtrl) insertLatex('\\left\\{#?\\right\\}');
+          else {
+            const prevPairs = countMatchedPairs(collectShadowParens().parens);
+            insertLatex(')');
+            highlightMatchingParens(')', prevPairs);
+          }
+          return;
+
+        case 'dot':
+          if (isCtrl) insertLatex(lastCapturedLatex);
+          else insertLatex('.');
+          return;
+
+        case 'neg':
+          if (isCtrl) insertLatex('\\mathrm{Ans}');
+          else insertLatex('-');
+          return;
+
+        case 'templates':
+          if (isCtrl) insertLatex(':=');
+          else openTemplatesPalette();
+          return;
+
+        case 'catalog':
+          if (isCtrl) openCatalogModal('SYM');
+          else openCatalogModal('CAT');
+          return;
+
+        case 'mul':
+          if (isCtrl) showToast('Sin acción asignada');
+          else insertLatex('\\cdot ');
+          return;
+
+        case 'div':
+          if (isCtrl) insertLatex('\\frac{#0}{#?}');
+          else insertLatex('\\frac{#@}{#?}');
+          return;
+
+        case 'plus':
+          if (isCtrl) showToast('Sin acción asignada');
+          else insertLatex('+');
+          return;
+
+        case 'minus':
+          if (isCtrl) showToast('Sin acción asignada');
+          else insertLatex('-');
+          return;
+
+        case 'enter':
+          evaluateCurrentInput(isCtrl);
+          return;
+
+        case 'ee':
+          insertLatex('\\cdot 10^{#?}');
+          return;
+
+        case 'pi':
+          if (isCtrl) insertLatex('\\pi ');
+          else openPiPalette();
+          return;
+
+        case 'comma':
+          insertLatex(', ');
+          return;
+
+        case 'punct':
+          openPunctPalette();
+          return;
+
+        case 'return':
+          evaluateCurrentInput(false);
+          return;
+
+        case 'space':
+          insertLatex('\\ ');
+          return;
+      }
+    }
+
+    // Conectar botones con data-key
+    document.querySelectorAll('[data-key]').forEach((el) => {
+      el.addEventListener('click', () => handleHardwareKey(el.dataset.key));
+    });
+
+    // Conectar botones numéricos 0–9 (sirven también como atajos 1–9 cuando el menú está abierto)
+    document.querySelectorAll('[data-digit]').forEach((el) => {
+      el.addEventListener('click', () => {
+        setCtrl(false);
+        const digit = el.dataset.digit;
+        if (modalNav.isOpen && modalNav.mode === 'list') {
+          const match = modalNav.items.find((it) => it.dataset.shortcut === digit);
+          if (match) {
+            match.click();
+            return;
+          }
+        }
+        insertLatex(digit);
+      });
+    });
+
+    // Conectar botones alfabéticos A–Z (sirven también como atajos A–D cuando el menú está abierto)
+    document.querySelectorAll('[data-letter]').forEach((el) => {
+      el.addEventListener('click', () => {
+        setCtrl(false);
+        const rawLetter = el.dataset.letter;
+        if (modalNav.isOpen && modalNav.mode === 'list') {
+          const match = modalNav.items.find((it) => it.dataset.shortcut === rawLetter.toLowerCase());
+          if (match) {
+            match.click();
+            return;
+          }
+        }
+        const ch = shiftMode !== 'OFF' ? rawLetter.toUpperCase() : rawLetter.toLowerCase();
+        if (shiftMode === 'ONCE') setShift('OFF');
+        insertLatex(ch);
+      });
+    });
+
+    // Soporte de teclado físico de computador (incluyendo navegación del menú, historial y plantillas 2D)
+    window.addEventListener('keydown', (e) => {
+      if (modalNav.isOpen) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); moveModalFocus('down'); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); moveModalFocus('up'); return; }
+        if (e.key === 'ArrowRight') { e.preventDefault(); moveModalFocus('right'); return; }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); moveModalFocus('left'); return; }
+        if (e.key === 'Enter') { e.preventDefault(); activateFocusedModalItem(); return; }
+        if (e.key === 'Escape') { e.preventDefault(); handleHardwareKey('esc'); return; }
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        handleHardwareKey('up');
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        handleHardwareKey('down');
+      }
+    }, true);
+
+    mf.addEventListener('keydown', (e) => {
+      if (modalNav.isOpen) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        evaluateCurrentInput(e.ctrlKey || e.metaKey);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        handleHardwareKey('esc');
+      } else if (e.key === ')' || e.key === '(') {
+        const ch = e.key;
+        const prevPairs = countMatchedPairs(collectShadowParens().parens);
+        setTimeout(() => highlightMatchingParens(ch, prevPairs), 15);
+      } else {
+        clearParenHighlights();
+      }
+    });
+  </script>
+</body>
+</html>
