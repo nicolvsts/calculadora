@@ -799,7 +799,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.18</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.19</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1310,7 +1310,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.18';
+    const APP_VERSION = 'v1.19';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -2237,7 +2237,7 @@
           { label: 'd²/dx²', katexPreview: '\\frac{\\mathrm{d}^2}{\\mathrm{d}\\square^2}(\\square)', latex: '\\frac{\\mathrm{d}^{2}}{\\mathrm{d}#?^{2}}\\left(#?\\right)' },
           { label: 'dⁿ/dxⁿ', katexPreview: '\\frac{\\mathrm{d}^{\\square}}{\\mathrm{d}\\square^{\\square}}(\\square)', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
           { label: '∫ f dx', katexPreview: '\\int \\square\\,\\mathrm{d}\\square', latex: '\\int #? \\, \\mathrm{d}#?' },
-          { label: '∫ₐᵇ f dx', katexPreview: '\\int_{\\square}^{\\square} \\square\\,\\mathrm{d}\\square', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?' },
+          { label: '∫ₐᵇ f dx', katexPreview: '\\overset{\\square}{\\underset{\\square}{\\int}} \\square\\,\\mathrm{d}\\square', latex: '\\overset{#?}{\\underset{#?}{\\int}} #? \\, \\mathrm{d}#?' },
           { label: '∑ sum', katexPreview: '\\sum_{\\square=\\square}^{\\square}(\\square)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
           { label: '∏ prod', katexPreview: '\\prod_{\\square=\\square}^{\\square}(\\square)', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
           { label: 'lim', katexPreview: '\\lim_{\\square\\to\\square}(\\square)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
@@ -2334,7 +2334,7 @@
             { name: 'identity(n)', latex: '\\mathrm{identity}\\left(#?\\right)', desc: 'Matriz identidad n×n' },
             { name: 'ifactor(n)', latex: '\\mathrm{ifactor}\\left(#?\\right)', desc: 'Factores primos de entero' },
             { name: 'impDiff(eq, x, y)', latex: '\\mathrm{impDiff}\\left(#?=#?, x, y\\right)', desc: 'Derivación implícita' },
-            { name: 'integrate (Integral 2D)', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?', desc: 'Integral definida 2D' },
+            { name: 'integrate (Integral 2D)', latex: '\\overset{#?}{\\underset{#?}{\\int}} #? \\, \\mathrm{d}#?', desc: 'Integral definida 2D' },
             { name: 'invNorm(area, μ, σ)', latex: '\\mathrm{invNorm}\\left(#?, 0, 1\\right)', desc: 'Inversa Normal' },
             { name: 'invT(area, df)', latex: '\\mathrm{invT}\\left(#?, #?\\right)', desc: 'Inversa t-Student' },
             { name: 'lcm(a, b)', latex: '\\mathrm{lcm}\\left(#?, #?\\right)', desc: 'Mínimo común múltiplo' },
@@ -2428,7 +2428,7 @@
           { shortcut: '1', label: '1: Derivative (Plantilla 2D d/dx)', latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)' },
           { shortcut: '2', label: '2: n-th Derivative (Plantilla 2D dⁿ/dxⁿ)', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
           { shortcut: '3', label: '3: Indefinite Integral (Plantilla 2D ∫)', latex: '\\int #? \\, \\mathrm{d}#?' },
-          { shortcut: '4', label: '4: Definite Integral (Plantilla 2D ∫ₐᵇ)', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?' },
+          { shortcut: '4', label: '4: Definite Integral (Plantilla 2D ∫ₐᵇ)', latex: '\\overset{#?}{\\underset{#?}{\\int}} #? \\, \\mathrm{d}#?' },
           { shortcut: '5', label: '5: Limit (Plantilla 2D lim)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
           { shortcut: '6', label: '6: Sum (Plantilla 2D ∑)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
           { shortcut: '7', label: '7: Product (Plantilla 2D ∏)', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },

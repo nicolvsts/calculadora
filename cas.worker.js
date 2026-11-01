@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.18';
+const WORKER_VERSION = 'v1.19';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -141,6 +141,46 @@ function extractTexArg(str, idx) {
 }
 
 /**
+ * Convierte integrales con límites apilados (plantilla con límite inferior primero)
+ * \overset{b}{\underset{a}{\int}} o \underset{a}{\overset{b}{\int}}  ->  \int_{a}^{b}
+ */
+function normalizeStackedIntegrals(str) {
+  let s = str;
+  for (const [outerCmd, innerCmd] of [['\\overset', '\\underset'], ['\\underset', '\\overset']]) {
+    let searchFrom = 0;
+    while (true) {
+      const idx = s.indexOf(outerCmd, searchFrom);
+      if (idx === -1) break;
+      const outerArg = extractTexArg(s, idx + outerCmd.length);
+      const outerBody = outerArg ? extractTexArg(s, outerArg.endIdx) : null;
+      let replaced = false;
+      if (outerArg && outerBody) {
+        const body = outerBody.content.trim();
+        if (body.startsWith(innerCmd)) {
+          const innerArg = extractTexArg(body, innerCmd.length);
+          const innerBody = innerArg ? extractTexArg(body, innerArg.endIdx) : null;
+          if (
+            innerArg &&
+            innerBody &&
+            innerBody.endIdx === body.length &&
+            /^\\int(?:\\limits)?\s*$/.test(innerBody.content.trim())
+          ) {
+            const upper = outerCmd === '\\overset' ? outerArg.content : innerArg.content;
+            const lower = outerCmd === '\\overset' ? innerArg.content : outerArg.content;
+            const rebuilt = `\\int_{${lower}}^{${upper}}`;
+            s = s.slice(0, idx) + rebuilt + s.slice(outerBody.endIdx);
+            searchFrom = idx + rebuilt.length;
+            replaced = true;
+          }
+        }
+      }
+      if (!replaced) searchFrom = idx + outerCmd.length;
+    }
+  }
+  return s;
+}
+
+/**
  * Convierte LaTeX 2D interactivo (procedente de MathLive <math-field>) a sintaxis algebraica Giac/TI-Nspire.
  * Soporta fracciones anidadas, integrales definidas/indefinidas, derivadas de orden n, raíces n-ésimas,
  * sumatorias, productorias, límites, logaritmos en base b y matrices 2D.
@@ -176,6 +216,9 @@ function latexToGiac(rawLatex) {
     }
     break;
   }
+
+  // Integrales con límites apilados (\overset / \underset) -> \int_{a}^{b}
+  s = normalizeStackedIntegrals(s);
 
   // Limpiar comandos de estilo de MathLive (\mathrm, \text, \operatorname, \left, \right, \, \: \; \!)
   const unwrapCommands = ['\\mathrm', '\\text', '\\operatorname', '\\mathbf', '\\mathit'];
