@@ -1,12 +1,17 @@
 // sw.js — Service Worker para ejecución 100% Offline de Own Calc (PWA)
-const CACHE_NAME = 'own-calc-cas-v12';
+const CACHE_NAME = 'own-calc-cas-v1.13';
 
-const CORE_ASSETS = [
+// Archivos ligeros del shell principal (se cachean al instante en install)
+const APP_SHELL_ASSETS = [
   './',
   './index.html',
-  './cas.worker.js?v=10',
   './manifest.json',
   './icon.svg',
+  './cas.worker.js?v=13'
+];
+
+// Motor simbólico Wasm, librerías 2D y tipografías locales (se pre-cachean sin bloquear la activación)
+const HEAVY_AND_VENDOR_ASSETS = [
   './giac.js?v=5',
   './giac.wasm',
   './vendor/katex.min.css',
@@ -35,19 +40,42 @@ const CORE_ASSETS = [
   './vendor/fonts/KaTeX_Typewriter-Regular.woff2'
 ];
 
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      await Promise.allSettled(
-        CORE_ASSETS.map((url) =>
-          fetch(url, { cache: 'no-cache' }).then((res) => {
-            if (res.ok) return cache.put(url, res);
-          })
-        )
-      );
+async function cacheAppShell() {
+  const cache = await caches.open(CACHE_NAME);
+  await Promise.allSettled(
+    APP_SHELL_ASSETS.map(async (url) => {
+      const res = await fetch(url, { cache: 'no-cache' });
+      if (res && res.ok) {
+        await cache.put(url, res.clone());
+        if (url === './index.html') {
+          await cache.put('./', res.clone());
+        }
+      }
     })
   );
+}
+
+async function preCacheRemainingAssets() {
+  const cache = await caches.open(CACHE_NAME);
+  await Promise.allSettled(
+    HEAVY_AND_VENDOR_ASSETS.map(async (url) => {
+      const existing = await cache.match(url, { ignoreSearch: true });
+      if (existing) return;
+      const res = await fetch(url);
+      if (res && res.ok) {
+        await cache.put(url, res);
+      }
+    })
+  );
+  const clients = await self.clients.matchAll({ type: 'window' });
+  for (const client of clients) {
+    client.postMessage({ type: 'SW_OFFLINE_READY' });
+  }
+}
+
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+  event.waitUntil(cacheAppShell());
 });
 
 self.addEventListener('activate', (event) => {
@@ -58,44 +86,64 @@ self.addEventListener('activate', (event) => {
         keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
       );
       await self.clients.claim();
-      const windowClients = await self.clients.matchAll({ type: 'window' });
-      for (const client of windowClients) {
-        client.navigate(client.url);
-      }
+      await preCacheRemainingAssets();
     })()
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'ENSURE_CACHED') {
+    event.waitUntil(
+      cacheAppShell().then(() => preCacheRemainingAssets())
+    );
+  }
 });
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
-  const url = new URL(event.request.url);
-  const isHeavyImmutable = url.pathname.endsWith('.wasm') || url.pathname.endsWith('.woff2');
+  event.respondWith(
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const isNavigate =
+        event.request.mode === 'navigate' || event.request.destination === 'document';
 
-  if (isHeavyImmutable) {
-    event.respondWith(
-      caches.match(event.request).then((cached) => {
-        if (cached) return cached;
-        return fetch(event.request).then((res) => {
-          if (res && res.status === 200) {
-            const clone = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(event.request, clone));
+      // Para el documento principal (index.html): si hay internet, traer la última versión al instante;
+      // si no hay internet (abierto desde Pantalla de Inicio offline), servir index.html desde la caché local.
+      if (isNavigate) {
+        try {
+          const freshDoc = await fetch(event.request, { cache: 'no-cache' });
+          if (freshDoc && freshDoc.status === 200) {
+            await cache.put('./index.html', freshDoc.clone());
+            await cache.put('./', freshDoc.clone());
+            return freshDoc;
           }
-          return res;
-        });
-      })
-    );
-  } else {
-    event.respondWith(
-      fetch(event.request, { cache: 'no-cache' })
-        .then((res) => {
-          if (res && res.status === 200) {
-            const clone = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(event.request, clone));
-          }
-          return res;
-        })
-        .catch(() => caches.match(event.request))
-    );
-  }
+        } catch (_) {
+          // Sin conexión a internet: entregar inmediatamente la copia guardada en el dispositivo
+        }
+        const cachedDoc =
+          (await cache.match(event.request, { ignoreSearch: true })) ||
+          (await cache.match('./index.html', { ignoreSearch: true })) ||
+          (await cache.match('./', { ignoreSearch: true }));
+        if (cachedDoc) return cachedDoc;
+      }
+
+      // Para todos los demás recursos (giac.wasm, cas.worker.js, vendor/MathLive/KaTeX): Cache-First
+      let cached = await cache.match(event.request);
+      if (!cached) {
+        cached = await cache.match(event.request, { ignoreSearch: true });
+      }
+      if (cached) {
+        return cached;
+      }
+
+      // Si aún no está en caché, descargarlo de la red y guardarlo inmediatamente para uso offline
+      const networkRes = await fetch(event.request);
+      if (networkRes && (networkRes.status === 200 || networkRes.type === 'opaque')) {
+        const clone = networkRes.clone();
+        event.waitUntil(cache.put(event.request, clone));
+      }
+      return networkRes;
+    })()
+  );
 });
