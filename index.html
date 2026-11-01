@@ -167,7 +167,7 @@
       letter-spacing: 0.01em;
     }
 
-    /* Historial REPL dentro del LCD: Exactamente 4 operaciones de altura uniforme (25% c/u) */
+    /* Historial REPL dentro del LCD: filas de altura mínima 25% que crecen según el contenido */
     #history {
       flex: 1 1 0;
       min-height: 0;
@@ -176,22 +176,18 @@
       display: flex;
       flex-direction: column;
       background: #ffffff;
-      scroll-snap-type: y mandatory;
     }
 
+    /* Altura dinámica: cada operación crece verticalmente según su contenido (fracciones, matrices…) */
     .history-item {
-      flex: 0 0 25%;
-      height: 25%;
+      flex: 0 0 auto;
       min-height: 25%;
-      max-height: 25%;
-      scroll-snap-align: start;
       border-bottom: 1px solid #e2e8f0;
-      padding: 1px 6px;
+      padding: 4px 6px;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      gap: 0;
-      overflow: hidden;
+      gap: 2px;
       transition: background 0.1s;
     }
 
@@ -205,12 +201,11 @@
 
     .history-input {
       color: #1e293b;
-      font-size: 1.04rem;
+      font-size: 1.12rem;
       cursor: pointer;
       align-self: flex-start;
-      padding: 0 5px;
+      padding: 3px 5px;
       border-radius: 3px;
-      height: 50%;
       display: flex;
       align-items: center;
       overflow-x: auto;
@@ -228,17 +223,14 @@
       justify-content: flex-end;
       align-items: center;
       gap: 6px;
-      height: 50%;
-      overflow: hidden;
     }
 
     .history-output {
       color: #0f172a;
-      font-size: 1.12rem;
+      font-size: 1.2rem;
       cursor: pointer;
-      padding: 0 5px;
+      padding: 3px 5px;
       border-radius: 3px;
-      height: 100%;
       display: flex;
       align-items: center;
       overflow-x: auto;
@@ -253,9 +245,9 @@
 
     .history-output .katex,
     .history-input .katex {
-      line-height: 1;
-      display: inline-flex;
-      align-items: center;
+      line-height: 1.2;
+      display: inline-block;
+      padding: 2px 0;
     }
 
     .approx-chip {
@@ -761,7 +753,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.15</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.16</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1272,7 +1264,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.15';
+    const APP_VERSION = 'v1.16';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -1734,16 +1726,14 @@
       focusEntryBar();
     }
 
+    // Con altura dinámica ya no se reduce la tipografía: la fila crece para mostrar
+    // fracciones y matrices a tamaño completo. Solo se mantiene el historial desplazado al final.
     function fitMathToRow(containerEl) {
       const katexEl = containerEl.querySelector('.katex');
-      if (!katexEl) return;
-      katexEl.style.fontSize = '';
+      if (katexEl) katexEl.style.fontSize = '';
       requestAnimationFrame(() => {
-        const availH = containerEl.clientHeight;
-        const contentH = katexEl.scrollHeight || katexEl.offsetHeight;
-        if (availH > 0 && contentH > availH - 2) {
-          const scale = Math.max(0.52, (availH - 2) / contentH);
-          katexEl.style.fontSize = `${(scale * 100).toFixed(1)}%`;
+        if (selectedHistoryIndex === -1) {
+          historyEl.scrollTop = historyEl.scrollHeight;
         }
       });
     }
