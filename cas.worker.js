@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.16';
+const WORKER_VERSION = 'v1.18';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -372,7 +372,11 @@ function latexToGiac(rawLatex) {
     const rest = s.slice(cur);
     const dMatch = rest.match(/(?:\\differentialD|\bd)\s*\(?([a-zA-Z_][a-zA-Z0-9_]*)\)?/);
     if (dMatch) {
-      const integrandRaw = rest.slice(0, dMatch.index).trim();
+      // Quitar un operador de multiplicación colgante antes del diferencial (p. ej. "sin(x)·cos(x)·dx")
+      const integrandRaw = rest
+        .slice(0, dMatch.index)
+        .replace(/(?:\\cdot|\\times|\*|\s)+$/, '')
+        .trim();
       const varName = dMatch[1];
       const afterIdx = cur + dMatch.index + dMatch[0].length;
       const integrand = latexToGiac(integrandRaw || '1');
@@ -513,6 +517,7 @@ function latexToGiac(rawLatex) {
     .replace(/\\Sigma\b/g, 'Sigma')
     .replace(/\\Omega\b/g, 'Omega')
     .replace(/\\cdot/g, '*')
+    .replace(/\\mid\b|\\vert\b/g, '|')
     .replace(/\\times/g, '*')
     .replace(/\\div/g, '/')
     .replace(/\\neq/g, '!=')
@@ -534,6 +539,9 @@ function latexToGiac(rawLatex) {
     .replace(/(?<![a-zA-Z_])([0-9])\s*\[\[/g, '$1*[[')
     .replace(/(?<![a-zA-Z0-9_])([a-zA-Z])\s*\(\[\[/g, '$1*([[')
     .replace(/(?<![a-zA-Z0-9_])([a-zA-Z])\s*\[\[/g, '$1*[[');
+
+  // Multiplicación implícita tras un paréntesis de cierre: sin(x)cos(x) -> sin(x)*cos(x), (a+b)(c) -> (a+b)*(c), (x)2 -> (x)*2
+  s = s.replace(/\)\s*(?=[a-zA-Z0-9_(])/g, ')*');
 
   return s.trim();
 }
@@ -963,7 +971,11 @@ function expandTIFunctions(input) {
   s = replaceFunctionCalls(s, 'unitV', (a) => `((${a[0]}) / l2norm(${a[0]}))`);
 
   s = replaceFunctionCalls(s, 'log', (a) => {
-    if (a.length === 2) return `(ln(${a[0]})/ln(${a[1]}))`;
+    if (a.length === 2) {
+      // Base 10 -> log10 (se evalúa exacto: log(100) = 2); otra base -> simplificar ln(x)/ln(b) (log₂(8) = 3)
+      if (a[1].replace(/[()\s]/g, '') === '10') return `log10(${a[0]})`;
+      return `simplify(ln(${a[0]})/ln(${a[1]}))`;
+    }
     return `log10(${a[0]})`;
   });
 

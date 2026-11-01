@@ -45,6 +45,25 @@
       -webkit-tap-highlight-color: transparent;
     }
 
+    /* iPad/iPhone: desactivar el zoom por doble toque (se mantiene el desplazamiento con el dedo)
+       y eliminar el retraso al pulsar dos veces seguidas la misma tecla */
+    html,
+    body,
+    button,
+    .hw-btn,
+    .tp-btn,
+    .tp-center,
+    #history,
+    .lcd-entry-bar,
+    math-field {
+      touch-action: manipulation;
+    }
+
+    html {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
+
     .keypad-chassis,
     .lcd-statusbar,
     .modal-header,
@@ -445,6 +464,33 @@
       font-family: monospace;
     }
 
+    /* Menú Matriz n×m: resaltado más claro para que los valores (n, m) sigan legibles */
+    .matrix-menu .menu-row:hover,
+    .matrix-menu .menu-row.focused-item {
+      background: #bae6fd;
+      color: #0f172a;
+      outline: 1.5px solid #0284c7;
+      outline-offset: -1.5px;
+    }
+
+    .matrix-menu .matrix-value {
+      color: #000000;
+    }
+
+    .matrix-menu .matrix-confirm-row {
+      justify-content: center;
+      background: #f1f5f9;
+      color: #0369a1;
+      font-weight: 800;
+      padding: 7px 10px;
+    }
+
+    .matrix-menu .matrix-confirm-row:hover,
+    .matrix-menu .matrix-confirm-row.focused-item {
+      background: #bae6fd;
+      color: #0c4a6e;
+    }
+
     /* =====================================================
        BOTONERA FÍSICA DE ALTA RESOLUCIÓN (4 BLOQUES)
        ESTILO 1: SERIGRAFÍA ORIGINAL TI-NSPIRE (HUMANISTA + MATH + SVG)
@@ -753,7 +799,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.16</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.18</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1264,7 +1310,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.16';
+    const APP_VERSION = 'v1.18';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -1989,7 +2035,7 @@
         'Matriz n×m (Filas × Columnas)',
         (body) => {
           const list = document.createElement('div');
-          list.className = 'menu-list';
+          list.className = 'menu-list matrix-menu';
           list.style.gap = '6px';
           list.style.padding = '4px 2px';
 
@@ -2019,11 +2065,11 @@
             });
 
             const valSpan = document.createElement('span');
+            valSpan.className = 'matrix-value';
             valSpan.style.minWidth = '24px';
             valSpan.style.textAlign = 'center';
             valSpan.style.fontWeight = '800';
             valSpan.style.fontSize = '0.96rem';
-            valSpan.style.color = '#0284c7';
 
             const btnPlus = document.createElement('button');
             btnPlus.className = 'approx-chip';
@@ -2064,12 +2110,7 @@
           const rowM = makeStepperRow('Columnas (m):', () => mCols, (v) => { mCols = v; });
 
           const confirmRow = document.createElement('div');
-          confirmRow.className = 'menu-row';
-          confirmRow.style.justifyContent = 'center';
-          confirmRow.style.background = '#e0f2fe';
-          confirmRow.style.color = '#0369a1';
-          confirmRow.style.fontWeight = '800';
-          confirmRow.style.padding = '7px 10px';
+          confirmRow.className = 'menu-row matrix-confirm-row';
           confirmRow.addEventListener('click', () => {
             const latex = buildMatrixLatex(nRows, mCols);
             closeModal();
@@ -2888,6 +2929,19 @@
         e.preventDefault();
       });
     });
+
+    // iPad/iPhone (Safari ignora user-scalable=no): bloquear el zoom con gestos de pellizco y doble toque
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach((evt) => {
+      document.addEventListener(evt, (e) => e.preventDefault(), { passive: false });
+    });
+    document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+    document.addEventListener(
+      'touchmove',
+      (e) => {
+        if (e.touches && e.touches.length > 1) e.preventDefault();
+      },
+      { passive: false }
+    );
 
     // Conectar botones con data-key
     document.querySelectorAll('[data-key]').forEach((el) => {

@@ -1,5 +1,5 @@
 // sw.js — Service Worker para ejecución 100% Offline de Own Calc (PWA)
-const CACHE_NAME = 'own-calc-cas-v1.16';
+const CACHE_NAME = 'own-calc-cas-v1.18';
 
 // Archivos ligeros del shell principal (se cachean al instante en install)
 const APP_SHELL_ASSETS = [
@@ -7,7 +7,7 @@ const APP_SHELL_ASSETS = [
   './index.html',
   './manifest.json',
   './icon.svg',
-  './cas.worker.js?v=v1.16'
+  './cas.worker.js?v=v1.18'
 ];
 
 // Motor simbólico Wasm, librerías 2D y tipografías locales (se pre-cachean sin bloquear la activación)
