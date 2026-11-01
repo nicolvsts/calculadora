@@ -7,6 +7,12 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
+const WORKER_VERSION = 'v1.15';
+
+self.postMessage({
+  type: 'WORKER_INIT',
+  workerVersion: WORKER_VERSION
+});
 
 self.Module = {
   locateFile: (path) => {
@@ -29,6 +35,7 @@ self.Module = {
       isReady = true;
       self.postMessage({
         type: 'READY',
+        workerVersion: WORKER_VERSION,
         engine: 'Giac/Xcas WASM (TI-Nspire CAS Mode)',
         variables: getVariablesSnapshot()
       });
@@ -187,8 +194,8 @@ function latexToGiac(rawLatex) {
     }
   }
 
-  // Matrices 2D: \begin{bmatrix} a & b \\ c & d \end{bmatrix}
-  s = s.replace(/\\begin\{(?:b|p|v)?matrix\}([\s\S]*?)\\end\{(?:b|p|v)?matrix\}/g, (_, body) => {
+  // Matrices 2D: \begin{bmatrix} a & b \\ c & d \end{bmatrix} y \left[\begin{array}{ccc} ... \end{array}\right]
+  const convertMatrixBody = (_, body) => {
     const rows = body
       .split(/\\\\/)
       .map((r) => r.trim())
@@ -198,7 +205,12 @@ function latexToGiac(rawLatex) {
         return `[${cols.join(', ')}]`;
       });
     return `([${rows.join(', ')}])`;
-  });
+  };
+  s = s.replace(/\\begin\{(?:b|p|v|B|V)?matrix\}([\s\S]*?)\\end\{(?:b|p|v|B|V)?matrix\}/g, convertMatrixBody);
+  s = s.replace(
+    /(?:\\left\s*(?:\\?[\[(|]))?\s*\\begin\{array\}(?:\{[^}]*\})?([\s\S]*?)\\end\{array\}\s*(?:\\right\s*(?:\\?[\])|.]))?/g,
+    convertMatrixBody
+  );
 
   // Valor absoluto \left| ... \right|
   while (s.includes('\\left|')) {
@@ -509,11 +521,19 @@ function latexToGiac(rawLatex) {
     .replace(/\\to\b|\\rightarrow\b/g, '->')
     .replace(/\\triangleq\b|\\coloneqq\b/g, ':=');
 
-  // Multiplicación implícita entre matrices y vectores/escalares: ([[...]])([[...]]), ([[...]])x, 2([[...]])
+  // Multiplicación implícita entre matrices y vectores/escalares:
+  // Soporta tanto matrices con paréntesis ([[...]])([[...]]) como con corchetes directos [[...]][[...]]
   s = s
     .replace(/\]\)\s*\(\[/g, '])*([')
+    .replace(/\]\]\s*\[\[/g, ']]*[[')
+    .replace(/\]\)\s*\[\[/g, '])*[[')
+    .replace(/\]\]\s*\(\[/g, ']]*([')
     .replace(/\]\)\s*([a-zA-Z0-9_(])/g, '])*$1')
-    .replace(/(?<![a-zA-Z_])([0-9])\s*\(\[/g, '$1*([');
+    .replace(/\]\]\s*([a-zA-Z0-9_(])/g, ']]*$1')
+    .replace(/(?<![a-zA-Z_])([0-9])\s*\(\[/g, '$1*([')
+    .replace(/(?<![a-zA-Z_])([0-9])\s*\[\[/g, '$1*[[')
+    .replace(/(?<![a-zA-Z0-9_])([a-zA-Z])\s*\(\[\[/g, '$1*([[')
+    .replace(/(?<![a-zA-Z0-9_])([a-zA-Z])\s*\[\[/g, '$1*[[');
 
   return s.trim();
 }
@@ -578,9 +598,58 @@ function normalizeEquationArg(exprStr) {
 }
 
 /**
+ * Elimina envolturas externas redundantes como `(...)`, `list[...]` o `set[...]`
+ */
+function stripOuterParensAndList(str) {
+  let s = (str || '').trim();
+  while (s.length > 0) {
+    if (s.startsWith('list[') && s.endsWith(']')) {
+      s = s.slice(4).trim();
+      continue;
+    }
+    if (s.startsWith('set[') && s.endsWith(']')) {
+      s = s.slice(3).trim();
+      continue;
+    }
+    if (s[0] === '(' && s[s.length - 1] === ')') {
+      const b = extractBalanced(s, 0, '(', ')');
+      if (b && b.endIdx === s.length) {
+        s = b.content.trim();
+        continue;
+      }
+    }
+    break;
+  }
+  return s;
+}
+
+/**
+ * Desenrolla recursivamente en JavaScript cualquier lista o matriz anidada `[[a], [b], [c]]`
+ * devolviendo un arreglo plano de expresiones escalares `['a', 'b', 'c']`.
+ */
+function extractScalarItems(rawStr) {
+  const s = stripOuterParensAndList(rawStr);
+  if (!s) return [];
+  if (s[0] === '[' && s[s.length - 1] === ']') {
+    const b = extractBalanced(s, 0, '[', ']');
+    if (b && b.endIdx === s.length) {
+      const inner = b.content.trim();
+      if (!inner) return [];
+      const parts = splitTopLevelArgs(inner, ',');
+      const result = [];
+      for (const part of parts) {
+        result.push(...extractScalarItems(part));
+      }
+      return result;
+    }
+  }
+  return [s];
+}
+
+/**
  * Traduce llamadas a solve / cSolve / nSolve soportando tanto ecuaciones escalares como
  * sistemas de ecuaciones matriciales:
- *  - A * X = B (con vector de incógnitas X = [[x], [y]] o [x, y])
+ *  - A * X = B (con vector de incógnitas X = [[x], [y], [z]] o [x, y, z])
  *  - A * x = B (con variable simbólica única x representando el vector incógnita)
  *  - Matriz/vector de ecuaciones [[eq1], [eq2]]
  *  - solve(A, B) o solve(A = B) con matriz de coeficientes A y vector independiente B
@@ -602,6 +671,14 @@ function buildSolveGiacExpr(solverFn, args) {
   if (caseval) {
     try {
       const evalClean = (cmd) => caseval(cmd).replace(/;$/, '').trim();
+      const isValidGiacOut = (out) =>
+        Boolean(
+          out &&
+            out !== 'undef' &&
+            !out.startsWith('GIAC_ERROR') &&
+            !out.toLowerCase().startsWith('error') &&
+            !out.includes('syntax error')
+        );
 
       // Caso 1: solve(A * x = B, x) donde A es matriz (ncols > 1), B es vector/matriz y x es un identificador simple
       if (eqArgs.length === 1 && varArgs.length === 1 && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(varArgs[0].trim())) {
@@ -659,34 +736,110 @@ function buildSolveGiacExpr(solverFn, args) {
       }
 
       // Caso 4: Sistemas simbólicos de ecuaciones (matriciales A*X = B, vectores de ecuaciones [[eq1],[eq2]] o escalares)
-      const normEqs = eqArgs.map(normalizeEquationArg);
-      const flatEqs = evalClean(`flatten([${normEqs.join(', ')}])`);
-      if (flatEqs && !flatEqs.startsWith('GIAC_ERROR') && !flatEqs.toLowerCase().startsWith('error')) {
-        const numEqs = Number(evalClean(`size(${flatEqs})`)) || 1;
-        const allVars = evalClean(`lname(${flatEqs})`);
-        const numAllVars = Number(evalClean(`size(${allVars})`)) || 0;
-
-        let userVars = '[]';
-        let numUserVars = 0;
-        if (varArgs.length > 0) {
-          userVars = evalClean(`flatten([${varArgs.join(', ')}])`);
-          numUserVars = Number(evalClean(`size(${userVars})`)) || 1;
-        }
-
-        let targetVars;
-        if (numUserVars === 0 || (numEqs > 1 && numUserVars === 1 && numAllVars > 1)) {
-          targetVars = numAllVars > 0 ? allVars : '[x]';
+      const eqList = [];
+      for (const eqArg of eqArgs) {
+        const topEqParts = splitTopLevelArgs(eqArg, '=');
+        if (topEqParts.length === 2) {
+          const diffExpr = `((${topEqParts[0]}) - (${topEqParts[1]}))`;
+          const evalDiff = evalClean(diffExpr);
+          if (isValidGiacOut(evalDiff)) {
+            const items = extractScalarItems(evalDiff);
+            if (items.length > 1) {
+              eqList.push(...items);
+            } else {
+              eqList.push(diffExpr);
+            }
+          } else {
+            eqList.push(diffExpr);
+          }
         } else {
-          targetVars = userVars;
+          const rawItems = extractScalarItems(eqArg);
+          if (rawItems.length > 1) {
+            for (const item of rawItems) {
+              eqList.push(normalizeEquationArg(item));
+            }
+          } else {
+            const normSingle = normalizeEquationArg(rawItems[0] || eqArg);
+            const evalSingle = evalClean(normSingle);
+            if (isValidGiacOut(evalSingle)) {
+              const items = extractScalarItems(evalSingle);
+              if (items.length > 1) {
+                eqList.push(...items);
+              } else {
+                eqList.push(normSingle);
+              }
+            } else {
+              eqList.push(normSingle);
+            }
+          }
+        }
+      }
+
+      if (eqList.length > 0) {
+        const userVarList = [];
+        for (const vArg of varArgs) {
+          userVarList.push(...extractScalarItems(vArg));
         }
 
-        const numTargetVars = Number(evalClean(`size(${targetVars})`)) || 1;
-        if (numEqs === 1 && numTargetVars === 1) {
-          const singleEq = evalClean(`${flatEqs}[0]`);
-          const singleVar = evalClean(`${targetVars}[0]`);
-          return `${solverFn}(${singleEq}, ${singleVar})`;
+        const allVarsRaw = evalClean(`lname([${eqList.join(', ')}])`);
+        const allVarList = isValidGiacOut(allVarsRaw) ? extractScalarItems(allVarsRaw) : [];
+
+        let targetVarList;
+        if (
+          userVarList.length === 0 ||
+          (eqList.length > 1 && userVarList.length === 1 && allVarList.length > 1)
+        ) {
+          targetVarList = allVarList.length > 0 ? allVarList : ['x'];
+        } else {
+          targetVarList = userVarList;
         }
-        return `${solverFn}(${flatEqs}, ${targetVars})`;
+
+        if (eqList.length === 1 && targetVarList.length === 1) {
+          return `${solverFn}(${eqList[0]}, ${targetVarList[0]})`;
+        }
+
+        // Detectar si el usuario ingresó las incógnitas como un vector columna [[x], [y], [z]]
+        const isColVectorVar = (() => {
+          if (varArgs.length !== 1) return false;
+          const s = stripOuterParensAndList(varArgs[0]);
+          if (s[0] !== '[' || s[s.length - 1] !== ']') return false;
+          const b = extractBalanced(s, 0, '[', ']');
+          if (!b || b.endIdx !== s.length) return false;
+          const rows = splitTopLevelArgs(b.content, ',');
+          return (
+            rows.length > 1 &&
+            rows.every((r) => {
+              const rt = r.trim();
+              return (
+                rt.startsWith('[') &&
+                rt.endsWith(']') &&
+                splitTopLevelArgs(rt.slice(1, -1), ',').length === 1
+              );
+            })
+          );
+        })();
+
+        const solveCall = `${solverFn}([${eqList.join(', ')}], [${targetVarList.join(', ')}])`;
+        if (isColVectorVar) {
+          const rawSol = evalClean(solveCall).replace(/^list\[/, '[');
+          if (isValidGiacOut(rawSol) && rawSol.startsWith('[') && rawSol.endsWith(']')) {
+            const bSol = extractBalanced(rawSol, 0, '[', ']');
+            if (bSol && bSol.endIdx === rawSol.length) {
+              const solTuples = splitTopLevelArgs(bSol.content, ',');
+              if (solTuples.length === 1) {
+                const tuple = solTuples[0].trim();
+                if (tuple.startsWith('[') && tuple.endsWith(']')) {
+                  const vals = splitTopLevelArgs(tuple.slice(1, -1), ',');
+                  if (vals.length === targetVarList.length) {
+                    return `[${vals.map((v) => `[${v}]`).join(', ')}]`;
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        return solveCall;
       }
     } catch (_) {
       // Fallback al comportamiento estándar si falla la inspección previa
@@ -908,8 +1061,8 @@ function giacExprToLatex(exprStr) {
   if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
     s = s.slice(1, -1);
   }
-  s = s.replace(/\\left\(\\begin\{array\}/g, '\\left[\\begin{array}');
-  s = s.replace(/\\end\{array\}\\right\)/g, '\\end{array}\\right]');
+  s = s.replace(/\\left\(\\begin\{array\}\{[^}]*\}/g, '\\begin{bmatrix}');
+  s = s.replace(/\\end\{array\}\\right\)/g, '\\end{bmatrix}');
   return s.trim();
 }
 
@@ -1025,12 +1178,12 @@ self.onmessage = (event) => {
       }
 
       const rawOutput = rawGiacOut.replace(/^list\[/, '[');
-      const exactLatex = giacExprToLatex(rawGiacOut);
-      const approxGiacOut = caseval(`evalf(${rawGiacOut})`).replace(/;$/, '').trim();
+      const exactLatex = giacExprToLatex(rawOutput);
+      const approxGiacOut = caseval(`evalf(${rawOutput})`).replace(/;$/, '').trim();
       const approxRaw = approxGiacOut.replace(/^list\[/, '[');
       const approxLatex =
-        approxGiacOut && !approxGiacOut.startsWith('GIAC_ERROR')
-          ? giacExprToLatex(approxGiacOut)
+        approxRaw && !approxRaw.startsWith('GIAC_ERROR')
+          ? giacExprToLatex(approxRaw)
           : exactLatex;
 
       lastAns = rawOutput;
