@@ -142,6 +142,9 @@ function latexToGiac(rawLatex) {
   if (!rawLatex) return '';
   let s = rawLatex.trim();
 
+  // Permitir omitir el segundo argumento opcional (p. ej. en solve(ecuación, □) o sistemas matriciales)
+  s = s.replace(/,\s*\\placeholder(?:\[[^\]]*\])?\{\s*\}/g, '');
+
   // Detectar si quedaron cajas de plantilla vacías (\placeholder{})
   if (/\\placeholder(?:\[[^\]]*\])?\{\s*\}/.test(s)) {
     throw new Error('Completa todos los recuadros vacíos (□) de la plantilla.');
@@ -194,7 +197,7 @@ function latexToGiac(rawLatex) {
         const cols = rowStr.split('&').map((c) => latexToGiac(c.trim()));
         return `[${cols.join(', ')}]`;
       });
-    return `[${rows.join(', ')}]`;
+    return `([${rows.join(', ')}])`;
   });
 
   // Valor absoluto \left| ... \right|
@@ -506,6 +509,12 @@ function latexToGiac(rawLatex) {
     .replace(/\\to\b|\\rightarrow\b/g, '->')
     .replace(/\\triangleq\b|\\coloneqq\b/g, ':=');
 
+  // Multiplicación implícita entre matrices y vectores/escalares: ([[...]])([[...]]), ([[...]])x, 2([[...]])
+  s = s
+    .replace(/\]\)\s*\(\[/g, '])*([')
+    .replace(/\]\)\s*([a-zA-Z0-9_(])/g, '])*$1')
+    .replace(/(?<![a-zA-Z_])([0-9])\s*\(\[/g, '$1*([');
+
   return s.trim();
 }
 
@@ -560,6 +569,133 @@ function replaceFunctionCalls(expr, fnName, replacer) {
   return result;
 }
 
+function normalizeEquationArg(exprStr) {
+  const parts = splitTopLevelArgs(exprStr, '=');
+  if (parts.length === 2) {
+    return `((${parts[0]}) - (${parts[1]}))`;
+  }
+  return exprStr;
+}
+
+/**
+ * Traduce llamadas a solve / cSolve / nSolve soportando tanto ecuaciones escalares como
+ * sistemas de ecuaciones matriciales:
+ *  - A * X = B (con vector de incógnitas X = [[x], [y]] o [x, y])
+ *  - A * x = B (con variable simbólica única x representando el vector incógnita)
+ *  - Matriz/vector de ecuaciones [[eq1], [eq2]]
+ *  - solve(A, B) o solve(A = B) con matriz de coeficientes A y vector independiente B
+ *  - solve(M) con matriz aumentada M de dimensión n × (n+1)
+ */
+function buildSolveGiacExpr(solverFn, args) {
+  if (!args || args.length === 0) return `${solverFn}()`;
+
+  const eqArgs = [args[0]];
+  const varArgs = [];
+  for (let i = 1; i < args.length; i++) {
+    if (splitTopLevelArgs(args[i], '=').length === 2) {
+      eqArgs.push(args[i]);
+    } else {
+      varArgs.push(args[i]);
+    }
+  }
+
+  if (caseval) {
+    try {
+      const evalClean = (cmd) => caseval(cmd).replace(/;$/, '').trim();
+
+      // Caso 1: solve(A * x = B, x) donde A es matriz (ncols > 1), B es vector/matriz y x es un identificador simple
+      if (eqArgs.length === 1 && varArgs.length === 1 && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(varArgs[0].trim())) {
+        const eqParts = splitTopLevelArgs(eqArgs[0], '=');
+        if (eqParts.length === 2) {
+          const [lhs, rhs] = eqParts;
+          const v = varArgs[0].trim();
+          const isRhsMat = evalClean(`ckmatrix(${rhs})`) === '1';
+          const isRhsList = evalClean(`type(${rhs})`) === 'DOM_LIST';
+          if (isRhsMat || isRhsList) {
+            const matA = evalClean(`subst(${lhs}, ${v}=1)`);
+            if (evalClean(`ckmatrix(${matA})`) === '1' && Number(evalClean(`ncols(${matA})`)) > 1) {
+              const rhsCol = isRhsMat ? rhs : `tran([${rhs}])`;
+              return `simult(${matA}, ${rhsCol})`;
+            }
+          }
+        }
+      }
+
+      // Caso 2: solve(A, B) o solve(A = B, ...) donde A y B son matrices numéricas sin variables simbólicas (AX = B)
+      let candA = null;
+      let candB = null;
+      if (eqArgs.length === 1 && splitTopLevelArgs(eqArgs[0], '=').length === 2) {
+        [candA, candB] = splitTopLevelArgs(eqArgs[0], '=');
+      } else if (eqArgs.length === 1 && varArgs.length === 1) {
+        [candA, candB] = [eqArgs[0], varArgs[0]];
+      }
+      if (candA && candB) {
+        const isAMat = evalClean(`ckmatrix(${candA})`) === '1';
+        const noVarsInAB = evalClean(`lname([${candA}, ${candB}])`) === '[]';
+        if (isAMat && noVarsInAB) {
+          const isBMat = evalClean(`ckmatrix(${candB})`) === '1';
+          const isBList = evalClean(`type(${candB})`) === 'DOM_LIST';
+          if (isBMat) {
+            const rowsA = Number(evalClean(`nrows(${candA})`));
+            const rowsB = Number(evalClean(`nrows(${candB})`));
+            const rhsCol = rowsB === 1 && rowsA > 1 ? `tran(${candB})` : candB;
+            return `simult(${candA}, ${rhsCol})`;
+          } else if (isBList) {
+            return `simult(${candA}, tran([${candB}]))`;
+          }
+        }
+      }
+
+      // Caso 3: solve(M) donde M es una matriz aumentada numérica n × (n+1)
+      if (eqArgs.length === 1 && splitTopLevelArgs(eqArgs[0], '=').length === 1) {
+        const M = eqArgs[0];
+        if (evalClean(`ckmatrix(${M})`) === '1' && evalClean(`lname(${M})`) === '[]') {
+          const r = Number(evalClean(`nrows(${M})`));
+          const c = Number(evalClean(`ncols(${M})`));
+          if (r >= 1 && c === r + 1) {
+            return `simult(subMat(${M}, 0, 0, ${r - 1}, ${r - 1}), subMat(${M}, 0, ${r}, ${r - 1}, ${r}))`;
+          }
+        }
+      }
+
+      // Caso 4: Sistemas simbólicos de ecuaciones (matriciales A*X = B, vectores de ecuaciones [[eq1],[eq2]] o escalares)
+      const normEqs = eqArgs.map(normalizeEquationArg);
+      const flatEqs = evalClean(`flatten([${normEqs.join(', ')}])`);
+      if (flatEqs && !flatEqs.startsWith('GIAC_ERROR') && !flatEqs.toLowerCase().startsWith('error')) {
+        const numEqs = Number(evalClean(`size(${flatEqs})`)) || 1;
+        const allVars = evalClean(`lname(${flatEqs})`);
+        const numAllVars = Number(evalClean(`size(${allVars})`)) || 0;
+
+        let userVars = '[]';
+        let numUserVars = 0;
+        if (varArgs.length > 0) {
+          userVars = evalClean(`flatten([${varArgs.join(', ')}])`);
+          numUserVars = Number(evalClean(`size(${userVars})`)) || 1;
+        }
+
+        let targetVars;
+        if (numUserVars === 0 || (numEqs > 1 && numUserVars === 1 && numAllVars > 1)) {
+          targetVars = numAllVars > 0 ? allVars : '[x]';
+        } else {
+          targetVars = userVars;
+        }
+
+        const numTargetVars = Number(evalClean(`size(${targetVars})`)) || 1;
+        if (numEqs === 1 && numTargetVars === 1) {
+          const singleEq = evalClean(`${flatEqs}[0]`);
+          const singleVar = evalClean(`${targetVars}[0]`);
+          return `${solverFn}(${singleEq}, ${singleVar})`;
+        }
+        return `${solverFn}(${flatEqs}, ${targetVars})`;
+      }
+    } catch (_) {
+      // Fallback al comportamiento estándar si falla la inspección previa
+    }
+  }
+
+  return `${solverFn}(${args.join(', ')})`;
+}
+
 function expandTIFunctions(input) {
   let s = input;
 
@@ -577,9 +713,10 @@ function expandTIFunctions(input) {
   s = replaceFunctionCalls(s, 'imag', (a) => `im(${a.join(', ')})`);
   s = replaceFunctionCalls(s, 'angle', (a) => `arg(${a.join(', ')})`);
 
-  // 2. Menú Álgebra
-  s = replaceFunctionCalls(s, 'cSolve', (a) => `csolve(${a.join(', ')})`);
-  s = replaceFunctionCalls(s, 'nSolve', (a) => `fsolve(${a.join(', ')})`);
+  // 2. Menú Álgebra (con soporte matricial y sistemas en solve / cSolve / nSolve)
+  s = replaceFunctionCalls(s, 'solve', (a) => buildSolveGiacExpr('solve', a));
+  s = replaceFunctionCalls(s, 'cSolve', (a) => buildSolveGiacExpr('csolve', a));
+  s = replaceFunctionCalls(s, 'nSolve', (a) => buildSolveGiacExpr('fsolve', a));
   s = replaceFunctionCalls(s, 'cFactor', (a) => `cfactor(${a.join(', ')})`);
   s = replaceFunctionCalls(s, 'cZeros', (a) => `cZeros(${a.join(', ')})`);
   s = replaceFunctionCalls(s, 'completeSquare', (a) => `canonical_form(${a.join(', ')})`);

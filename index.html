@@ -186,10 +186,10 @@
       max-height: 25%;
       scroll-snap-align: start;
       border-bottom: 1px solid #e2e8f0;
-      padding: 2px 4px;
+      padding: 1px 6px;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      justify-content: center;
       gap: 0;
       overflow: hidden;
       transition: background 0.1s;
@@ -205,12 +205,12 @@
 
     .history-input {
       color: #1e293b;
-      font-size: 0.85rem;
+      font-size: 1.04rem;
       cursor: pointer;
       align-self: flex-start;
-      padding: 0 4px;
+      padding: 0 5px;
       border-radius: 3px;
-      height: 48%;
+      height: 50%;
       display: flex;
       align-items: center;
       overflow-x: auto;
@@ -234,9 +234,9 @@
 
     .history-output {
       color: #0f172a;
-      font-size: 0.92rem;
+      font-size: 1.12rem;
       cursor: pointer;
-      padding: 0 4px;
+      padding: 0 5px;
       border-radius: 3px;
       height: 100%;
       display: flex;
@@ -254,6 +254,8 @@
     .history-output .katex,
     .history-input .katex {
       line-height: 1;
+      display: inline-flex;
+      align-items: center;
     }
 
     .approx-chip {
@@ -759,7 +761,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.13</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.14</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1270,7 +1272,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.13';
+    const APP_VERSION = 'v1.14';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -1421,7 +1423,7 @@
     // Inicializar Web Worker dedicado con giac.wasm
     let casWorker = null;
     try {
-      casWorker = new Worker('./cas.worker.js?v=13');
+      casWorker = new Worker(`./cas.worker.js?v=${APP_VERSION}`);
       casWorker.onmessage = handleWorkerMessage;
       casWorker.onerror = () => {
         engineIndicator.textContent = 'ERR';
@@ -1823,6 +1825,7 @@
       modalNav.cols = options.cols || 4;
       modalNav.onBack = options.onBack || null;
       modalNav.onSwitchTab = options.onSwitchTab || null;
+      modalNav.onDigit = options.onDigit || null;
 
       renderFn(modalBodyEl);
       modalEl.classList.add('open');
@@ -1840,6 +1843,7 @@
       modalNav.items = [];
       modalNav.onBack = null;
       modalNav.onSwitchTab = null;
+      modalNav.onDigit = null;
       focusEntryBar();
     }
 
@@ -1858,6 +1862,7 @@
       if (len === 0) return;
 
       if (modalNav.mode === 'list') {
+        const curItem = modalNav.items[modalNav.focusIndex];
         if (dir === 'down') {
           modalNav.focusIndex = (modalNav.focusIndex + 1) % len;
           updateModalFocus();
@@ -1865,14 +1870,17 @@
           modalNav.focusIndex = (modalNav.focusIndex - 1 + len) % len;
           updateModalFocus();
         } else if (dir === 'right') {
-          const curItem = modalNav.items[modalNav.focusIndex];
-          if (curItem && curItem.dataset.hasSubmenu === 'true') {
+          if (curItem && typeof curItem.onArrowRight === 'function') {
+            curItem.onArrowRight();
+          } else if (curItem && curItem.dataset.hasSubmenu === 'true') {
             curItem.click();
           } else if (modalNav.onSwitchTab) {
             modalNav.onSwitchTab();
           }
         } else if (dir === 'left') {
-          if (modalNav.onBack) {
+          if (curItem && typeof curItem.onArrowLeft === 'function') {
+            curItem.onArrowLeft();
+          } else if (modalNav.onBack) {
             modalNav.onBack();
           } else if (modalNav.onSwitchTab) {
             modalNav.onSwitchTab();
@@ -1904,7 +1912,7 @@
     function renderGridPalette(container, items) {
       const grid = document.createElement('div');
       grid.className = 'palette-grid';
-      items.forEach(({ label, katexPreview, latex }) => {
+      items.forEach(({ label, katexPreview, latex, action }) => {
         const cell = document.createElement('button');
         cell.className = 'palette-cell';
         if (katexPreview && window.katex) {
@@ -1917,12 +1925,161 @@
           cell.textContent = label;
         }
         cell.addEventListener('click', () => {
-          closeModal();
-          insertLatex(latex);
+          if (action) {
+            action();
+          } else {
+            closeModal();
+            insertLatex(latex);
+          }
         });
         grid.appendChild(cell);
       });
       container.appendChild(grid);
+    }
+
+    // Menú de creación de Matriz personalizada n × m (n filas × m columnas)
+    function openCustomMatrixModal(onBackFn = null) {
+      let nRows = 2;
+      let mCols = 2;
+
+      const buildMatrixLatex = (r, c) => {
+        const rowStr = Array(c).fill('#?').join(' & ');
+        return `\\begin{bmatrix} ${Array(r).fill(rowStr).join(' \\\\ ')} \\end{bmatrix}`;
+      };
+
+      let updateUI = () => {};
+
+      openModal(
+        'Matriz n×m (Filas × Columnas)',
+        (body) => {
+          const list = document.createElement('div');
+          list.className = 'menu-list';
+          list.style.gap = '6px';
+          list.style.padding = '4px 2px';
+
+          const makeStepperRow = (titleText, getVal, setVal) => {
+            const row = document.createElement('div');
+            row.className = 'menu-row';
+            row.style.padding = '6px 10px';
+
+            const lbl = document.createElement('span');
+            lbl.style.fontWeight = '700';
+            lbl.textContent = titleText;
+
+            const ctrlWrap = document.createElement('div');
+            ctrlWrap.style.display = 'inline-flex';
+            ctrlWrap.style.alignItems = 'center';
+            ctrlWrap.style.gap = '8px';
+
+            const btnMinus = document.createElement('button');
+            btnMinus.className = 'approx-chip';
+            btnMinus.style.padding = '2px 9px';
+            btnMinus.style.fontSize = '0.88rem';
+            btnMinus.textContent = '−';
+            btnMinus.addEventListener('click', (e) => {
+              e.stopPropagation();
+              setVal(Math.max(1, getVal() - 1));
+              updateUI();
+            });
+
+            const valSpan = document.createElement('span');
+            valSpan.style.minWidth = '24px';
+            valSpan.style.textAlign = 'center';
+            valSpan.style.fontWeight = '800';
+            valSpan.style.fontSize = '0.96rem';
+            valSpan.style.color = '#0284c7';
+
+            const btnPlus = document.createElement('button');
+            btnPlus.className = 'approx-chip';
+            btnPlus.style.padding = '2px 9px';
+            btnPlus.style.fontSize = '0.88rem';
+            btnPlus.textContent = '+';
+            btnPlus.addEventListener('click', (e) => {
+              e.stopPropagation();
+              setVal(Math.min(10, getVal() + 1));
+              updateUI();
+            });
+
+            row.onArrowLeft = () => {
+              setVal(Math.max(1, getVal() - 1));
+              updateUI();
+            };
+            row.onArrowRight = () => {
+              setVal(Math.min(10, getVal() + 1));
+              updateUI();
+            };
+            row.addEventListener('click', () => {
+              const idx = modalNav.items.indexOf(row);
+              if (idx >= 0) {
+                modalNav.focusIndex = idx;
+                updateModalFocus();
+              }
+            });
+
+            ctrlWrap.appendChild(btnMinus);
+            ctrlWrap.appendChild(valSpan);
+            ctrlWrap.appendChild(btnPlus);
+            row.appendChild(lbl);
+            row.appendChild(ctrlWrap);
+            return { row, valSpan };
+          };
+
+          const rowN = makeStepperRow('Filas (n):', () => nRows, (v) => { nRows = v; });
+          const rowM = makeStepperRow('Columnas (m):', () => mCols, (v) => { mCols = v; });
+
+          const confirmRow = document.createElement('div');
+          confirmRow.className = 'menu-row';
+          confirmRow.style.justifyContent = 'center';
+          confirmRow.style.background = '#e0f2fe';
+          confirmRow.style.color = '#0369a1';
+          confirmRow.style.fontWeight = '800';
+          confirmRow.style.padding = '7px 10px';
+          confirmRow.addEventListener('click', () => {
+            const latex = buildMatrixLatex(nRows, mCols);
+            closeModal();
+            insertLatex(latex);
+          });
+
+          const hint = document.createElement('div');
+          hint.style.fontSize = '0.68rem';
+          hint.style.color = '#64748b';
+          hint.style.textAlign = 'center';
+          hint.style.marginTop = '2px';
+          hint.textContent = 'Tip: Usa los números (1–9), ◀/▶ o −/+ y pulsa enter';
+
+          updateUI = () => {
+            rowN.valSpan.textContent = String(nRows);
+            rowM.valSpan.textContent = String(mCols);
+            confirmRow.textContent = `Insertar Matriz (${nRows} × ${mCols}) ↵`;
+          };
+          updateUI();
+
+          list.appendChild(rowN.row);
+          list.appendChild(rowM.row);
+          list.appendChild(confirmRow);
+          body.appendChild(list);
+          body.appendChild(hint);
+        },
+        {
+          mode: 'list',
+          initialIndex: 0,
+          onBack: onBackFn,
+          onDigit: (digitNum) => {
+            if (digitNum < 1 || digitNum > 9) return;
+            if (modalNav.focusIndex === 0) {
+              nRows = digitNum;
+              updateUI();
+              modalNav.focusIndex = 1;
+              updateModalFocus();
+            } else if (modalNav.focusIndex === 1) {
+              mCols = digitNum;
+              updateUI();
+              modalNav.focusIndex = 2;
+              updateModalFocus();
+            }
+          }
+        }
+      );
     }
 
     // 1. Paleta Trigonométrica (trig▸)
@@ -2007,10 +2164,7 @@
           { label: '∑ sum', katexPreview: '\\sum_{\\square=\\square}^{\\square}(\\square)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
           { label: '∏ prod', katexPreview: '\\prod_{\\square=\\square}^{\\square}(\\square)', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
           { label: 'lim', katexPreview: '\\lim_{\\square\\to\\square}(\\square)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
-          { label: '[2×2]', katexPreview: '\\begin{bmatrix}\\square&\\square\\\\\\square&\\square\\end{bmatrix}', latex: '\\begin{bmatrix} #? & #? \\\\ #? & #? \\end{bmatrix}' },
-          { label: '[1×2]', katexPreview: '\\begin{bmatrix}\\square&\\square\\end{bmatrix}', latex: '\\begin{bmatrix} #? & #? \\end{bmatrix}' },
-          { label: '[2×1]', katexPreview: '\\begin{bmatrix}\\square\\\\\\square\\end{bmatrix}', latex: '\\begin{bmatrix} #? \\\\ #? \\end{bmatrix}' },
-          { label: '[3×3]', katexPreview: '\\begin{bmatrix}\\square&\\square&\\square\\\\\\square&\\square&\\square\\\\\\square&\\square&\\square\\end{bmatrix}', latex: '\\begin{bmatrix} #? & #? & #? \\\\ #? & #? & #? \\\\ #? & #? & #? \\end{bmatrix}' },
+          { label: 'Matriz n×m', katexPreview: '\\begin{bmatrix}\\square&\\cdots\\\\\\vdots&\\ddots\\end{bmatrix}_{n\\times m}', action: () => openCustomMatrixModal(() => openTemplatesPalette()) },
           { label: 'Sist 2×2', katexPreview: '\\left\\{\\begin{array}{l}\\square=\\square\\\\\\square=\\square\\end{array}\\right.', latex: '\\mathrm{solve}\\left(\\left[#?=#?, #?=#?\\right], \\left[x, y\\right]\\right)' }
         ]);
       }, { mode: 'grid', cols: 4 });
@@ -2117,7 +2271,7 @@
             { name: 'poissPdf(λ, x)', latex: '\\mathrm{poissPdf}\\left(#?, #?\\right)', desc: 'Densidad Poisson' },
             { name: 'propFrac(expr)', latex: '\\mathrm{propFrac}\\left(#?\\right)', desc: 'Fracciones parciales' },
             { name: 'rref(matriz)', latex: '\\mathrm{rref}\\left(#?\\right)', desc: 'Escalonada reducida' },
-            { name: 'solve(eq, var)', latex: '\\mathrm{solve}\\left(#?=#?, x\\right)', desc: 'Resuelve ecuación' },
+            { name: 'solve(eq/mat, var)', latex: '\\mathrm{solve}\\left(#?, #?\\right)', desc: 'Resuelve ecuación o sistema matricial' },
             { name: 'sum (Sumatoria 2D)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)', desc: 'Sumatoria simbólica 2D' },
             { name: 'taylor(expr, var, n, x0)', latex: '\\mathrm{taylor}\\left(#?, x, 5, 0\\right)', desc: 'Polinomio de Taylor' },
             { name: 'tCdf(low, up, df)', latex: '\\mathrm{tCdf}\\left(#?, #?, #?\\right)', desc: 'Acumulada t-Student' },
@@ -2178,14 +2332,14 @@
         shortcut: '3',
         title: '3: Álgebra (Algebra)',
         items: [
-          { shortcut: '1', label: '1: Solve', latex: '\\mathrm{solve}\\left(#?=#?, x\\right)' },
+          { shortcut: '1', label: '1: Solve', latex: '\\mathrm{solve}\\left(#?, #?\\right)' },
           { shortcut: '2', label: '2: Factor', latex: '\\mathrm{factor}\\left(#?\\right)' },
           { shortcut: '3', label: '3: Expand', latex: '\\mathrm{expand}\\left(#?\\right)' },
           { shortcut: '4', label: '4: Zeros', latex: '\\mathrm{zeros}\\left(#?, x\\right)' },
           { shortcut: '5', label: '5: Complete the Square', latex: '\\mathrm{completeSquare}\\left(#?, x\\right)' },
-          { shortcut: '6', label: '6: Numerical Solve (nSolve)', latex: '\\mathrm{nSolve}\\left(#?=#?, x\\right)' },
+          { shortcut: '6', label: '6: Numerical Solve (nSolve)', latex: '\\mathrm{nSolve}\\left(#?, #?\\right)' },
           { shortcut: '7', label: '7: Solve System of Equations (2×2)', latex: '\\mathrm{solve}\\left(\\left[#?=#?, #?=#?\\right], \\left[x, y\\right]\\right)' },
-          { shortcut: '8', label: '8: Complex Solve (cSolve)', latex: '\\mathrm{cSolve}\\left(#?=#?, x\\right)' },
+          { shortcut: '8', label: '8: Complex Solve (cSolve)', latex: '\\mathrm{cSolve}\\left(#?, #?\\right)' },
           { shortcut: '9', label: '9: Complex Factor (cFactor)', latex: '\\mathrm{cFactor}\\left(#?\\right)' },
           { shortcut: 'a', label: 'A: Complex Zeros (cZeros)', latex: '\\mathrm{cZeros}\\left(#?, x\\right)' }
         ]
@@ -2239,17 +2393,16 @@
         shortcut: '7',
         title: '7: Matriz y Vector (Matrix & Vector)',
         items: [
-          { shortcut: '1', label: '1: Matriz 2×2 Visual (2D)', latex: '\\begin{bmatrix} #? & #? \\\\ #? & #? \\end{bmatrix}' },
-          { shortcut: '2', label: '2: Matriz 3×3 Visual (2D)', latex: '\\begin{bmatrix} #? & #? & #? \\\\ #? & #? & #? \\\\ #? & #? & #? \\end{bmatrix}' },
-          { shortcut: '3', label: '3: Identity Matrix (identity)', latex: '\\mathrm{identity}\\left(3\\right)' },
-          { shortcut: '4', label: '4: Transpose (Aᵀ)', latex: '\\mathrm{transpose}\\left(#?\\right)' },
-          { shortcut: '5', label: '5: Determinant (det)', latex: '\\mathrm{det}\\left(#?\\right)' },
-          { shortcut: '6', label: '6: Row-Echelon Form (ref)', latex: '\\mathrm{ref}\\left(#?\\right)' },
-          { shortcut: '7', label: '7: Reduced Row-Echelon Form (rref)', latex: '\\mathrm{rref}\\left(#?\\right)' },
-          { shortcut: '8', label: '8: Eigenvalues (eigVl)', latex: '\\mathrm{eigVl}\\left(#?\\right)' },
-          { shortcut: '9', label: '9: Eigenvectors (eigVc)', latex: '\\mathrm{eigVc}\\left(#?\\right)' },
-          { shortcut: 'a', label: 'A: Dot Product (dotP)', latex: '\\mathrm{dotP}\\left(\\left[#?, #?\\right], \\left[#?, #?\\right]\\right)' },
-          { shortcut: 'b', label: 'B: Cross Product (crossP)', latex: '\\mathrm{crossP}\\left(\\left[#?, #?, #?\\right], \\left[#?, #?, #?\\right]\\right)' }
+          { shortcut: '1', label: '1: Matriz n×m', keepModalOpen: true, action: () => openCustomMatrixModal(() => openCategorySubmenu(6)) },
+          { shortcut: '2', label: '2: Identity Matrix (identity)', latex: '\\mathrm{identity}\\left(3\\right)' },
+          { shortcut: '3', label: '3: Transpose (Aᵀ)', latex: '\\mathrm{transpose}\\left(#?\\right)' },
+          { shortcut: '4', label: '4: Determinant (det)', latex: '\\mathrm{det}\\left(#?\\right)' },
+          { shortcut: '5', label: '5: Row-Echelon Form (ref)', latex: '\\mathrm{ref}\\left(#?\\right)' },
+          { shortcut: '6', label: '6: Reduced Row-Echelon Form (rref)', latex: '\\mathrm{rref}\\left(#?\\right)' },
+          { shortcut: '7', label: '7: Eigenvalues (eigVl)', latex: '\\mathrm{eigVl}\\left(#?\\right)' },
+          { shortcut: '8', label: '8: Eigenvectors (eigVc)', latex: '\\mathrm{eigVc}\\left(#?\\right)' },
+          { shortcut: '9', label: '9: Dot Product (dotP)', latex: '\\mathrm{dotP}\\left(\\left[#?, #?\\right], \\left[#?, #?\\right]\\right)' },
+          { shortcut: 'a', label: 'A: Cross Product (crossP)', latex: '\\mathrm{crossP}\\left(\\left[#?, #?, #?\\right], \\left[#?, #?, #?\\right]\\right)' }
         ]
       }
     ];
@@ -2285,7 +2438,7 @@
             if (item.shortcut) subRow.dataset.shortcut = item.shortcut;
             subRow.textContent = item.label;
             subRow.addEventListener('click', () => {
-              closeModal();
+              if (!item.keepModalOpen) closeModal();
               if (item.action) item.action();
               else insertLatex(item.latex);
             });
@@ -2710,11 +2863,17 @@
       el.addEventListener('click', () => {
         setCtrl(false);
         const digit = el.dataset.digit;
-        if (modalNav.isOpen && modalNav.mode === 'list') {
-          const match = modalNav.items.find((it) => it.dataset.shortcut === digit);
-          if (match) {
-            match.click();
+        if (modalNav.isOpen) {
+          if (typeof modalNav.onDigit === 'function') {
+            modalNav.onDigit(Number(digit));
             return;
+          }
+          if (modalNav.mode === 'list') {
+            const match = modalNav.items.find((it) => it.dataset.shortcut === digit);
+            if (match) {
+              match.click();
+              return;
+            }
           }
         }
         insertLatex(digit);
@@ -2742,6 +2901,11 @@
     // Soporte de teclado físico de computador (incluyendo navegación del menú, historial y plantillas 2D)
     window.addEventListener('keydown', (e) => {
       if (modalNav.isOpen) {
+        if (/^[1-9]$/.test(e.key) && typeof modalNav.onDigit === 'function') {
+          e.preventDefault();
+          modalNav.onDigit(Number(e.key));
+          return;
+        }
         if (e.key === 'ArrowDown') { e.preventDefault(); moveModalFocus('down'); return; }
         if (e.key === 'ArrowUp') { e.preventDefault(); moveModalFocus('up'); return; }
         if (e.key === 'ArrowRight') { e.preventDefault(); moveModalFocus('right'); return; }
