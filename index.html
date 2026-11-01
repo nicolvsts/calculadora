@@ -13,11 +13,11 @@
   <link rel="apple-touch-icon" href="./icon.svg" />
   <title>Own Calc — TI-Nspire CX CAS</title>
 
-  <!-- KaTeX y MathLive Locales (Renderizado e Interacción 2D MathPrint 100% Offline) -->
-  <link rel="stylesheet" href="./vendor/katex.min.css" />
-  <link rel="stylesheet" href="./vendor/mathlive-static.css" />
-  <script defer src="./vendor/katex.min.js"></script>
-  <script defer src="./vendor/mathlive.min.js"></script>
+  <!-- KaTeX y MathLive Locales (con respaldo automático CDN si la carpeta vendor/ no fue subida al servidor) -->
+  <link rel="stylesheet" href="./vendor/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';" />
+  <link rel="stylesheet" href="./vendor/mathlive-static.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/mathlive@0.101.2/dist/mathlive-static.css';" />
+  <script defer src="./vendor/katex.min.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';document.head.appendChild(s);"></script>
+  <script defer src="./vendor/mathlive.min.js" onerror="window.__mlCdnFallback=true;var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/mathlive@0.101.2/dist/mathlive.min.js';document.head.appendChild(s);"></script>
 
   <style>
     :root {
@@ -43,7 +43,15 @@
       margin: 0;
       padding: 0;
       -webkit-tap-highlight-color: transparent;
+    }
+
+    .keypad-chassis,
+    .lcd-statusbar,
+    .modal-header,
+    .entry-prompt,
+    .approx-chip {
       user-select: none;
+      -webkit-user-select: none;
     }
 
     body {
@@ -150,6 +158,13 @@
     .status-pill.cas-ready {
       background: rgba(16, 185, 129, 0.25);
       color: #6ee7b7;
+    }
+
+    .version-tag {
+      color: #94a3b8;
+      font-size: 0.64rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
     }
 
     /* Historial REPL dentro del LCD: Exactamente 4 operaciones de altura uniforme (25% c/u) */
@@ -262,6 +277,7 @@
       gap: 4px;
       flex-shrink: 0;
       min-height: 44px;
+      cursor: text;
     }
 
     .entry-prompt {
@@ -281,6 +297,11 @@
       font-size: 1.02rem;
       min-height: 36px;
       outline: none;
+      cursor: text;
+      user-select: text !important;
+      -webkit-user-select: text !important;
+      pointer-events: auto !important;
+      touch-action: manipulation;
       --caret-color: #0284c7;
       --selection-background-color: #bae6fd;
       --selection-color: #0f172a;
@@ -289,7 +310,8 @@
       --contains-highlight-background-color: rgba(2, 132, 199, 0.1);
     }
 
-    math-field#expr-input:focus-within {
+    math-field#expr-input:focus-within,
+    math-field#expr-input.entry-active {
       border-color: #0284c7;
       box-shadow: 0 0 0 1.5px rgba(2, 132, 199, 0.25);
     }
@@ -737,7 +759,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad
+              Scratchpad <span id="app-version" class="version-tag">v1.13</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -765,9 +787,9 @@
         </div>
 
         <!-- Línea de Edición Bidimensional Interactiva (<math-field>) -->
-        <div class="lcd-entry-bar">
+        <div class="lcd-entry-bar" id="entry-bar">
           <span class="entry-prompt">&gt;</span>
-          <math-field id="expr-input" virtual-keyboard-policy="manual" inputmode="none"></math-field>
+          <math-field id="expr-input" class="entry-active" virtual-keyboard-policy="manual" contenteditable="true"></math-field>
         </div>
       </div>
     </section>
@@ -1247,21 +1269,32 @@
   </main>
 
   <script>
-    // Purga de cachés antiguos y registro de Service Worker v12
-    if ('caches' in window) {
-      caches.keys().then((keys) => {
-        keys.forEach((k) => {
-          if (k !== 'own-calc-cas-v12') caches.delete(k);
-        });
-      });
-    }
+    // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
+    const APP_VERSION = 'v1.13';
+    const versionEl = document.getElementById('app-version');
+    if (versionEl) versionEl.textContent = APP_VERSION;
+
+    // Registro inmediato de Service Worker para funcionamiento 100% Offline desde Pantalla de Inicio
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=12').then((reg) => reg.update()).catch(() => {});
+      navigator.serviceWorker
+        .register(`./sw.js?v=${APP_VERSION}`)
+        .then((reg) => {
+          reg.update().catch(() => {});
+          if (reg.active) {
+            reg.active.postMessage({ type: 'ENSURE_CACHED' });
+          }
+        })
+        .catch(() => {});
+
+      navigator.serviceWorker.addEventListener('message', (e) => {
+        if (e.data && e.data.type === 'SW_OFFLINE_READY') {
+          engineIndicator.title = `Motor CAS (${APP_VERSION}) activo y guardado localmente para uso 100% sin internet`;
+        }
       });
     }
 
     const historyEl = document.getElementById('history');
+    const entryBarEl = document.getElementById('entry-bar');
     const mf = document.getElementById('expr-input');
     const toastEl = document.getElementById('lcd-toast');
     const modalEl = document.getElementById('lcd-modal');
@@ -1273,30 +1306,6 @@
     const engineIndicator = document.getElementById('engine-indicator');
     const btnCtrl = document.getElementById('btn-ctrl');
     const btnShift = document.getElementById('btn-shift');
-
-    // Configurar MathLive 100% local y con cajas editables 2D (paréntesis manuales y sin teclado nativo móvil)
-    function suppressMobileNativeKeyboard() {
-      mf.setAttribute('inputmode', 'none');
-      if (mf.shadowRoot) {
-        mf.shadowRoot.querySelectorAll('[contenteditable], textarea, input').forEach((el) => {
-          el.setAttribute('inputmode', 'none');
-        });
-      }
-    }
-
-    window.addEventListener('DOMContentLoaded', () => {
-      if (window.MathfieldElement) {
-        window.MathfieldElement.fontsDirectory = './vendor/fonts';
-        window.MathfieldElement.soundsDirectory = null;
-      }
-      mf.mathVirtualKeyboardPolicy = 'manual';
-      mf.smartMode = false;
-      mf.smartFence = false;
-      mf.smartSuperscript = false;
-      suppressMobileNativeKeyboard();
-      mf.addEventListener('focus', suppressMobileNativeKeyboard);
-      mf.focus();
-    });
 
     let reqCounter = 0;
     let angleMode = 'RAD';
@@ -1319,10 +1328,100 @@
       onSwitchTab: null
     };
 
+    function getMfLatex() {
+      return typeof mf.getValue === 'function' ? mf.getValue('latex') : (mf.value || '');
+    }
+
+    function setMfLatex(val) {
+      if (typeof mf.setValue === 'function') {
+        mf.setValue(val);
+      } else {
+        mf.value = val;
+      }
+    }
+
+    function updateEntryActiveState() {
+      const isEntryActive = !modalNav.isOpen && selectedHistoryIndex === -1;
+      mf.classList.toggle('entry-active', isEntryActive);
+    }
+
+    function focusEntryBar() {
+      selectedHistoryIndex = -1;
+      highlightHistoryRow();
+      updateEntryActiveState();
+      try {
+        if (typeof mf.focus === 'function') {
+          mf.focus({ preventScroll: true });
+        }
+      } catch (_) {}
+    }
+
+    function initMathfield() {
+      if (!window.MathfieldElement) return;
+      if (!window.__mlCdnFallback) {
+        window.MathfieldElement.fontsDirectory = './vendor/fonts';
+      }
+      window.MathfieldElement.soundsDirectory = null;
+      mf.mathVirtualKeyboardPolicy = 'manual';
+      mf.smartMode = false;
+      mf.smartFence = false;
+      mf.smartSuperscript = false;
+      mf.setAttribute('contenteditable', 'true');
+
+      if (mf.shadowRoot) {
+        // Restaurar pointer-events en caso de que MathLive lo haya desactivado y asegurar visibilidad del cursor
+        mf.shadowRoot.querySelectorAll('span').forEach((s) => {
+          if (s.style && s.style.pointerEvents === 'none') {
+            s.style.pointerEvents = 'auto';
+          }
+        });
+        if (!mf.shadowRoot.getElementById('ti-caret-override')) {
+          const styleEl = document.createElement('style');
+          styleEl.id = 'ti-caret-override';
+          styleEl.textContent = `
+            :host, .ML__mathlive, .ML__content, .ML__keyboard-sink {
+              user-select: text !important;
+              -webkit-user-select: text !important;
+              pointer-events: auto !important;
+            }
+            :host(.entry-active) .ML__caret::after,
+            :host(.entry-active) .ML__text-caret::after,
+            :host(.entry-active) .ML__latex-caret::after {
+              visibility: visible !important;
+            }
+          `;
+          mf.shadowRoot.appendChild(styleEl);
+        }
+      }
+      updateEntryActiveState();
+      try {
+        mf.focus({ preventScroll: true });
+      } catch (_) {}
+    }
+
+    if (window.customElements && window.customElements.whenDefined) {
+      window.customElements.whenDefined('math-field').then(initMathfield);
+    }
+    window.addEventListener('DOMContentLoaded', initMathfield);
+    mf.addEventListener('mount', initMathfield);
+
+    // Al tocar cualquier parte de la barra de escritura en móvil o PC, seleccionarla de inmediato
+    if (entryBarEl) {
+      entryBarEl.addEventListener('pointerdown', () => {
+        if (modalNav.isOpen) closeModal();
+        selectedHistoryIndex = -1;
+        highlightHistoryRow();
+        updateEntryActiveState();
+      });
+      entryBarEl.addEventListener('click', () => {
+        focusEntryBar();
+      });
+    }
+
     // Inicializar Web Worker dedicado con giac.wasm
     let casWorker = null;
     try {
-      casWorker = new Worker('./cas.worker.js?v=10');
+      casWorker = new Worker('./cas.worker.js?v=13');
       casWorker.onmessage = handleWorkerMessage;
       casWorker.onerror = () => {
         engineIndicator.textContent = 'ERR';
@@ -1387,7 +1486,7 @@
     }
 
     function pushUndoState() {
-      const cur = mf.getValue('latex');
+      const cur = getMfLatex();
       if (undoStack[undoStack.length - 1] !== cur) {
         undoStack.push(cur);
         if (undoStack.length > 50) undoStack.shift();
@@ -1544,12 +1643,14 @@
     function insertLatex(latexSnippet) {
       clearParenHighlights();
       pushUndoState();
-      mf.focus();
-      mf.insert(latexSnippet, {
-        format: 'latex',
-        selectionMode: 'placeholder',
-        smartFence: false
-      });
+      focusEntryBar();
+      if (typeof mf.insert === 'function') {
+        mf.insert(latexSnippet, {
+          format: 'latex',
+          selectionMode: 'placeholder',
+          smartFence: false
+        });
+      }
     }
 
     mf.addEventListener('input', () => {
@@ -1570,7 +1671,7 @@
         return;
       }
 
-      const currentLatex = mf.getValue('latex').trim();
+      const currentLatex = getMfLatex().trim();
       if (!currentLatex || !casWorker) return;
 
       casWorker.postMessage({
@@ -1581,10 +1682,8 @@
         forceApprox
       });
 
-      mf.setValue('');
-      selectedHistoryIndex = -1;
-      highlightHistoryRow();
-      mf.focus();
+      setMfLatex('');
+      focusEntryBar();
     }
 
     function fitMathToRow(containerEl) {
@@ -1710,6 +1809,7 @@
           rec.el.scrollIntoView({ block: 'nearest' });
         }
       });
+      updateEntryActiveState();
     }
 
     // =========================================================
@@ -1731,6 +1831,7 @@
       modalNav.items = Array.from(modalBodyEl.querySelectorAll(selector));
       modalNav.focusIndex = Math.min(options.initialIndex || 0, Math.max(0, modalNav.items.length - 1));
       updateModalFocus();
+      updateEntryActiveState();
     }
 
     function closeModal() {
@@ -1739,7 +1840,7 @@
       modalNav.items = [];
       modalNav.onBack = null;
       modalNav.onSwitchTab = null;
-      mf.focus();
+      focusEntryBar();
     }
 
     function updateModalFocus() {
@@ -2309,20 +2410,19 @@
           if (isCtrl) {
             if (undoStack.length > 1) {
               undoStack.pop();
-              mf.setValue(undoStack[undoStack.length - 1] || '');
+              setMfLatex(undoStack[undoStack.length - 1] || '');
             } else {
-              mf.setValue('');
+              setMfLatex('');
             }
-            mf.focus();
+            focusEntryBar();
           } else if (modalNav.isOpen) {
             if (modalNav.onBack) modalNav.onBack();
             else closeModal();
           } else if (selectedHistoryIndex !== -1) {
-            selectedHistoryIndex = -1;
-            highlightHistoryRow();
+            focusEntryBar();
           } else {
-            mf.setValue('');
-            mf.focus();
+            setMfLatex('');
+            focusEntryBar();
           }
           return;
 
@@ -2342,8 +2442,10 @@
             moveModalFocus(isCtrl ? 'up' : 'down');
             return;
           }
-          mf.focus();
-          mf.executeCommand(isCtrl ? 'moveToPreviousPlaceholder' : 'moveToNextPlaceholder');
+          focusEntryBar();
+          if (typeof mf.executeCommand === 'function') {
+            mf.executeCommand(isCtrl ? 'moveToPreviousPlaceholder' : 'moveToNextPlaceholder');
+          }
           return;
 
         case 'up': {
@@ -2356,11 +2458,11 @@
             return;
           }
           // Si no estamos en el historial, primero intentamos subir dentro de una estructura 2D (fracción, matriz, integral)
-          if (selectedHistoryIndex === -1 && mf.getValue('latex').trim() !== '') {
+          if (selectedHistoryIndex === -1 && getMfLatex().trim() !== '' && typeof mf.executeCommand === 'function') {
             const beforePos = mf.position;
             mf.executeCommand('moveUp');
             if (mf.position !== beforePos) {
-              mf.focus();
+              focusEntryBar();
               return;
             }
           }
@@ -2369,6 +2471,8 @@
             if (selectedHistoryIndex === -1) selectedHistoryIndex = historyRecords.length - 1;
             else if (selectedHistoryIndex > 0) selectedHistoryIndex--;
             highlightHistoryRow();
+          } else {
+            focusEntryBar();
           }
           return;
         }
@@ -2385,15 +2489,16 @@
           if (selectedHistoryIndex !== -1) {
             if (selectedHistoryIndex < historyRecords.length - 1) {
               selectedHistoryIndex++;
+              highlightHistoryRow();
             } else {
-              selectedHistoryIndex = -1;
-              mf.focus();
+              focusEntryBar();
             }
-            highlightHistoryRow();
             return;
           }
-          mf.focus();
-          mf.executeCommand('moveDown');
+          focusEntryBar();
+          if (typeof mf.executeCommand === 'function') {
+            mf.executeCommand('moveDown');
+          }
           return;
         }
 
@@ -2406,8 +2511,10 @@
             moveModalFocus('left');
             return;
           }
-          mf.focus();
-          mf.executeCommand('moveToPreviousChar');
+          focusEntryBar();
+          if (typeof mf.executeCommand === 'function') {
+            mf.executeCommand('moveToPreviousChar');
+          }
           return;
 
         case 'right':
@@ -2419,8 +2526,10 @@
             moveModalFocus('right');
             return;
           }
-          mf.focus();
-          mf.executeCommand('moveToNextChar');
+          focusEntryBar();
+          if (typeof mf.executeCommand === 'function') {
+            mf.executeCommand('moveToNextChar');
+          }
           return;
 
         case 'center-click':
@@ -2454,12 +2563,14 @@
           }
           if (isCtrl) {
             pushUndoState();
-            mf.setValue('');
-            mf.focus();
+            setMfLatex('');
+            focusEntryBar();
           } else {
             pushUndoState();
-            mf.focus();
-            mf.executeCommand('deleteBackward');
+            focusEntryBar();
+            if (typeof mf.executeCommand === 'function') {
+              mf.executeCommand('deleteBackward');
+            }
           }
           return;
 
@@ -2581,6 +2692,13 @@
           return;
       }
     }
+
+    // Evitar que al pulsar cualquier botón físico en pantalla táctil o ratón se pierda el foco del <math-field>
+    document.querySelectorAll('.hw-btn, .tp-btn, .tp-center').forEach((el) => {
+      el.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+      });
+    });
 
     // Conectar botones con data-key
     document.querySelectorAll('[data-key]').forEach((el) => {
