@@ -799,7 +799,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.21</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.25</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1310,7 +1310,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.21';
+    const APP_VERSION = 'v1.25';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -1736,6 +1736,17 @@
           selectionMode: 'placeholder',
           smartFence: false
         });
+        // Si acabamos de insertar una integral definida, enfocar el límite inferior
+        if (latexSnippet.includes('\\int_{') && latexSnippet.includes('^{')) {
+          const model = mf._mathfield?.model;
+          if (model) {
+            const curAtom = model.at(model.position);
+            const { intAtom } = findIntegralContext(curAtom, model);
+            if (intAtom && intAtom.subscript) {
+              focusIntegralBranch(model, intAtom.subscript, 'end');
+            }
+          }
+        }
       }
     }
 
@@ -1788,6 +1799,14 @@
       historyRecords.forEach((rec) => fitMathToRow(rec.el));
     });
 
+    const KATEX_MACROS = {
+      '\\exponentialE': 'e',
+      '\\imaginaryI': 'i',
+      '\\differentialD': '\\mathrm{d}',
+      '\\capitalDifferentialD': '\\mathrm{D}',
+      '\\degree': '^\\circ'
+    };
+
     function renderHistoryItem(data) {
       const { status, inputExpr, inputLatex, exactLatex, approxLatex, raw, approxRaw, error } = data;
       const itemEl = document.createElement('div');
@@ -1796,10 +1815,14 @@
       // 1. Nodo seleccionable de CÁLCULO (Entrada superior izquierda)
       const inDiv = document.createElement('div');
       inDiv.className = 'history-input';
-      const cleanInputLatex = (inputLatex || inputExpr || '').replace(/\\placeholder\{\}/g, '\\square');
+      const cleanInputLatex = (inputLatex || inputExpr || '')
+        .replace(/\\placeholder\{\}/g, '\\square')
+        .replace(/\\exponentialE\b/g, 'e')
+        .replace(/\\imaginaryI\b/g, 'i')
+        .replace(/\\differentialD\b/g, '\\mathrm{d}');
       if (window.katex && cleanInputLatex) {
         try {
-          katex.render(cleanInputLatex, inDiv, { throwOnError: false, displayMode: false });
+          katex.render(cleanInputLatex, inDiv, { macros: KATEX_MACROS, throwOnError: false, displayMode: false });
           fitMathToRow(inDiv);
         } catch (_) {
           inDiv.textContent = inputExpr;
@@ -1838,7 +1861,7 @@
         const renderMath = () => {
           const latex = showingApprox ? approxLatex : exactLatex;
           try {
-            katex.render(latex, outDiv, { throwOnError: false, displayMode: false });
+            katex.render(latex, outDiv, { macros: KATEX_MACROS, throwOnError: false, displayMode: false });
             fitMathToRow(outDiv);
           } catch (_) {
             outDiv.textContent = showingApprox ? (approxRaw || raw) : raw;
@@ -1999,7 +2022,7 @@
         cell.className = 'palette-cell';
         if (katexPreview && window.katex) {
           try {
-            katex.render(katexPreview, cell, { throwOnError: false, displayMode: false });
+            katex.render(katexPreview, cell, { macros: KATEX_MACROS, throwOnError: false, displayMode: false });
           } catch (_) {
             cell.textContent = label;
           }
@@ -2237,7 +2260,7 @@
           { label: 'd²/dx²', katexPreview: '\\frac{\\mathrm{d}^2}{\\mathrm{d}\\square^2}(\\square)', latex: '\\frac{\\mathrm{d}^{2}}{\\mathrm{d}#?^{2}}\\left(#?\\right)' },
           { label: 'dⁿ/dxⁿ', katexPreview: '\\frac{\\mathrm{d}^{\\square}}{\\mathrm{d}\\square^{\\square}}(\\square)', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
           { label: '∫ f dx', katexPreview: '\\int \\square\\,\\mathrm{d}\\square', latex: '\\int #? \\, \\mathrm{d}#?' },
-          { label: '∫ₐᵇ f dx', katexPreview: '\\overset{\\square}{\\underset{\\square}{\\int}} \\square\\,\\mathrm{d}\\square', latex: '\\overset{#?}{\\underset{#?}{\\int}} #? \\, \\mathrm{d}#?' },
+          { label: '∫ₐᵇ f dx', katexPreview: '\\int_{\\square}^{\\square} \\square\\,\\mathrm{d}\\square', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?' },
           { label: '∑ sum', katexPreview: '\\sum_{\\square=\\square}^{\\square}(\\square)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
           { label: '∏ prod', katexPreview: '\\prod_{\\square=\\square}^{\\square}(\\square)', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
           { label: 'lim', katexPreview: '\\lim_{\\square\\to\\square}(\\square)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
@@ -2334,7 +2357,7 @@
             { name: 'identity(n)', latex: '\\mathrm{identity}\\left(#?\\right)', desc: 'Matriz identidad n×n' },
             { name: 'ifactor(n)', latex: '\\mathrm{ifactor}\\left(#?\\right)', desc: 'Factores primos de entero' },
             { name: 'impDiff(eq, x, y)', latex: '\\mathrm{impDiff}\\left(#?=#?, x, y\\right)', desc: 'Derivación implícita' },
-            { name: 'integrate (Integral 2D)', latex: '\\overset{#?}{\\underset{#?}{\\int}} #? \\, \\mathrm{d}#?', desc: 'Integral definida 2D' },
+            { name: 'integrate (Integral 2D)', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?', desc: 'Integral definida 2D' },
             { name: 'invNorm(area, μ, σ)', latex: '\\mathrm{invNorm}\\left(#?, 0, 1\\right)', desc: 'Inversa Normal' },
             { name: 'invT(area, df)', latex: '\\mathrm{invT}\\left(#?, #?\\right)', desc: 'Inversa t-Student' },
             { name: 'lcm(a, b)', latex: '\\mathrm{lcm}\\left(#?, #?\\right)', desc: 'Mínimo común múltiplo' },
@@ -2428,7 +2451,7 @@
           { shortcut: '1', label: '1: Derivative (Plantilla 2D d/dx)', latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)' },
           { shortcut: '2', label: '2: n-th Derivative (Plantilla 2D dⁿ/dxⁿ)', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
           { shortcut: '3', label: '3: Indefinite Integral (Plantilla 2D ∫)', latex: '\\int #? \\, \\mathrm{d}#?' },
-          { shortcut: '4', label: '4: Definite Integral (Plantilla 2D ∫ₐᵇ)', latex: '\\overset{#?}{\\underset{#?}{\\int}} #? \\, \\mathrm{d}#?' },
+          { shortcut: '4', label: '4: Definite Integral (Plantilla 2D ∫ₐᵇ)', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?' },
           { shortcut: '5', label: '5: Limit (Plantilla 2D lim)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
           { shortcut: '6', label: '6: Sum (Plantilla 2D ∑)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
           { shortcut: '7', label: '7: Product (Plantilla 2D ∏)', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
@@ -2615,16 +2638,9 @@
     angleIndicator.addEventListener('click', toggleAngleMode);
 
     // =========================================================
-    // NAVEGACIÓN PERSONALIZADA CON FLECHAS EN INTEGRALES DEFINIDAS
-    // (\overset{sup}{\underset{inf}{\int}} integrando \, \mathrm{d}var)
+    // NAVEGACIÓN PERSONALIZADA CON FLECHAS Y TAB EN INTEGRALES DEFINIDAS
+    // (\int_{inf}^{sup} integrando \, \mathrm{d}var)
     // =========================================================
-    function findUndersetChild(oversetAtom) {
-      if (!oversetAtom || oversetAtom.command !== '\\overset' || !Array.isArray(oversetAtom.body)) {
-        return null;
-      }
-      return oversetAtom.body.find((c) => c && c.command === '\\underset') || null;
-    }
-
     function setModelCursor(model, offset) {
       model.setPositionHandlingPlaceholder(offset);
       mf.selection = model.selection;
@@ -2643,6 +2659,103 @@
       return true;
     }
 
+    function findIntegralContext(curAtom, model) {
+      if (!curAtom) return { intAtom: null, inSubscript: false, inSuperscript: false, isIntegrand: false };
+      let node = curAtom;
+      let inSubscript = false;
+      let inSuperscript = false;
+      let intAtom = null;
+
+      // 1. Verificar si estamos dentro de subscript o superscript de \int
+      while (node) {
+        if (node.parent && node.parent.command === '\\int') {
+          intAtom = node.parent;
+          if (node.parentBranch === 'subscript') inSubscript = true;
+          if (node.parentBranch === 'superscript') inSuperscript = true;
+          break;
+        }
+        node = node.parent;
+      }
+
+      // 2. Verificar si estamos en el integrando a la derecha de \int
+      let isIntegrand = false;
+      if (!intAtom && model) {
+        let n = curAtom;
+        while (n && n.parent && n.parent !== model.root && n.parent.command !== '\\int') {
+          n = n.parent;
+        }
+        let sib = n;
+        let foundInt = null;
+        while (sib) {
+          if (sib.command === '\\int') {
+            foundInt = sib;
+            break;
+          }
+          sib = sib.leftSibling;
+        }
+        if (foundInt) {
+          let passedD = false;
+          let check = foundInt.rightSibling;
+          while (check && check !== n) {
+            if (check.value === 'd' || check.command === '\\mathrm{d}') {
+              passedD = true;
+              break;
+            }
+            check = check.rightSibling;
+          }
+          if (!passedD && n.value !== 'd' && n.command !== '\\mathrm{d}') {
+            intAtom = foundInt;
+            isIntegrand = true;
+          }
+        }
+      }
+
+      return { intAtom, inSubscript, inSuperscript, isIntegrand };
+    }
+
+    function tryIntegralTabNav(forward = true) {
+      if (modalNav.isOpen || selectedHistoryIndex !== -1) return false;
+      const model = mf && mf._mathfield && mf._mathfield.model;
+      if (!model) return false;
+
+      const curAtom = model.at(model.position);
+      if (!curAtom) return false;
+
+      const { intAtom, inSubscript, inSuperscript, isIntegrand } = findIntegralContext(curAtom, model);
+      if (!intAtom) return false;
+
+      if (forward) {
+        // Desde límite inferior (subscript) -> saltar a límite superior (superscript)
+        if (inSubscript && intAtom.superscript) {
+          return focusIntegralBranch(model, intAtom.superscript, 'end');
+        }
+        // Desde límite superior (superscript) -> saltar al integrando
+        if (inSuperscript) {
+          const integrandAtom = intAtom.rightSibling;
+          if (integrandAtom) {
+            if (integrandAtom.type === 'placeholder') {
+              setModelCursor(model, model.offsetOf(integrandAtom));
+              return true;
+            }
+            setModelCursor(model, model.offsetOf(intAtom));
+            return true;
+          }
+        }
+      } else {
+        // En reversa (Shift+Tab):
+        // Desde el integrando -> volver al límite superior (superscript)
+        if (isIntegrand && intAtom.superscript) {
+          return focusIntegralBranch(model, intAtom.superscript, 'end');
+        }
+        // Desde el límite superior (superscript) -> volver al límite inferior (subscript)
+        if (inSuperscript && intAtom.subscript) {
+          return focusIntegralBranch(model, intAtom.subscript, 'end');
+        }
+      }
+
+      return false;
+    }
+
     function tryIntegralArrowNav(dir) {
       if (modalNav.isOpen || selectedHistoryIndex !== -1) return false;
       const model = mf && mf._mathfield && mf._mathfield.model;
@@ -2651,41 +2764,14 @@
       const curAtom = model.at(model.position);
       if (!curAtom) return false;
 
-      // 1. Detectar si el cursor está dentro del límite inferior (\underset.below) o superior (\overset.above)
-      let node = curAtom;
-      let lowerOverset = null;
-      let lowerUnderset = null;
-      let upperOverset = null;
+      const { intAtom, inSubscript, inSuperscript, isIntegrand } = findIntegralContext(curAtom, model);
+      if (!intAtom) return false;
 
-      while (node) {
-        if (
-          node.parentBranch === 'below' &&
-          node.parent &&
-          node.parent.command === '\\underset' &&
-          node.parent.parent &&
-          node.parent.parent.command === '\\overset'
-        ) {
-          lowerUnderset = node.parent;
-          lowerOverset = node.parent.parent;
-          break;
-        }
-        if (
-          node.parentBranch === 'above' &&
-          node.parent &&
-          node.parent.command === '\\overset' &&
-          findUndersetChild(node.parent)
-        ) {
-          upperOverset = node.parent;
-          break;
-        }
-        node = node.parent;
-      }
-
-      // Caso A: El cursor está en el LÍMITE INFERIOR
-      if (lowerOverset && lowerUnderset) {
-        const belowBranch = lowerUnderset.below || [];
+      // Caso A: El cursor está en el LÍMITE INFERIOR (subscript)
+      if (inSubscript) {
+        const subBranch = intAtom.subscript || [];
         if (dir === 'up') {
-          return focusIntegralBranch(model, lowerOverset.above, 'end');
+          return focusIntegralBranch(model, intAtom.superscript, 'end');
         }
         if (dir === 'down') {
           return true; // Ya estamos en el límite inferior; evitar que baje o cree ramas vacías
@@ -2693,68 +2779,71 @@
         if (dir === 'right') {
           const atRightEdge =
             model.selectionIsPlaceholder ||
-            (curAtom.parent === lowerUnderset && curAtom === belowBranch[belowBranch.length - 1]);
+            (curAtom.parent === intAtom && curAtom === subBranch[subBranch.length - 1]);
           if (atRightEdge) {
-            setModelCursor(model, model.offsetOf(lowerOverset));
+            const integrandAtom = intAtom.rightSibling;
+            if (integrandAtom && integrandAtom.type === 'placeholder') {
+              setModelCursor(model, model.offsetOf(integrandAtom));
+            } else {
+              setModelCursor(model, model.offsetOf(intAtom));
+            }
             return true;
           }
         }
         if (dir === 'left') {
           const atLeftEdge =
             model.selectionIsPlaceholder ||
-            (curAtom.parent === lowerUnderset && curAtom === belowBranch[0]);
-          if (atLeftEdge && lowerOverset.leftSibling) {
-            setModelCursor(model, model.offsetOf(lowerOverset.leftSibling));
+            (curAtom.parent === intAtom && curAtom === subBranch[0]);
+          if (atLeftEdge && intAtom.leftSibling) {
+            setModelCursor(model, model.offsetOf(intAtom.leftSibling));
             return true;
           }
         }
         return false;
       }
 
-      // Caso B: El cursor está en el LÍMITE SUPERIOR
-      if (upperOverset) {
-        const aboveBranch = upperOverset.above || [];
-        const undersetChild = findUndersetChild(upperOverset);
-        if (dir === 'down' && undersetChild) {
-          return focusIntegralBranch(model, undersetChild.below, 'end');
+      // Caso B: El cursor está en el LÍMITE SUPERIOR (superscript)
+      if (inSuperscript) {
+        const supBranch = intAtom.superscript || [];
+        if (dir === 'down') {
+          return focusIntegralBranch(model, intAtom.subscript, 'end');
         }
         if (dir === 'up') {
-          return true; // Ya estamos en el límite superior; evitar saltar al historial
+          return true; // Ya estamos en el límite superior; evitar saltar al historial REPL
         }
         if (dir === 'right') {
           const atRightEdge =
             model.selectionIsPlaceholder ||
-            (curAtom.parent === upperOverset && curAtom === aboveBranch[aboveBranch.length - 1]);
+            (curAtom.parent === intAtom && curAtom === supBranch[supBranch.length - 1]);
           if (atRightEdge) {
-            setModelCursor(model, model.offsetOf(upperOverset));
+            const integrandAtom = intAtom.rightSibling;
+            if (integrandAtom && integrandAtom.type === 'placeholder') {
+              setModelCursor(model, model.offsetOf(integrandAtom));
+            } else {
+              setModelCursor(model, model.offsetOf(intAtom));
+            }
             return true;
           }
         }
         if (dir === 'left') {
           const atLeftEdge =
             model.selectionIsPlaceholder ||
-            (curAtom.parent === upperOverset && curAtom === aboveBranch[0]);
-          if (atLeftEdge && upperOverset.leftSibling) {
-            setModelCursor(model, model.offsetOf(upperOverset.leftSibling));
+            (curAtom.parent === intAtom && curAtom === supBranch[0]);
+          if (atLeftEdge && intAtom.leftSibling) {
+            setModelCursor(model, model.offsetOf(intAtom.leftSibling));
             return true;
           }
         }
         return false;
       }
 
-      // Caso C: El cursor está al inicio del INTEGRANDO (justo a la derecha de la integral) y pulsa Flecha Izquierda (◀)
+      // Caso C: El cursor está al inicio del INTEGRANDO y pulsa Flecha Izquierda (◀)
       if (dir === 'left') {
-        // Subcaso C1: el integrando es un placeholder seleccionado (#?) cuyo hermano izquierdo es la integral
-        if (
-          model.selectionIsPlaceholder &&
-          curAtom.type === 'placeholder' &&
-          findUndersetChild(curAtom.leftSibling)
-        ) {
-          return focusIntegralBranch(model, curAtom.leftSibling.above, 'end');
+        if (isIntegrand && (model.selectionIsPlaceholder || curAtom === intAtom.rightSibling)) {
+          return focusIntegralBranch(model, intAtom.superscript, 'end');
         }
-        // Subcaso C2: el cursor está colapsado justo después del nodo \overset de la integral
-        if (model.selectionIsCollapsed && findUndersetChild(curAtom)) {
-          return focusIntegralBranch(model, curAtom.above, 'end');
+        if (model.selectionIsCollapsed && curAtom === intAtom) {
+          return focusIntegralBranch(model, intAtom.superscript, 'end');
         }
       }
 
@@ -2819,6 +2908,7 @@
             moveModalFocus(isCtrl ? 'up' : 'down');
             return;
           }
+          if (tryIntegralTabNav(!isCtrl)) return;
           focusEntryBar();
           if (typeof mf.executeCommand === 'function') {
             mf.executeCommand(isCtrl ? 'moveToPreviousPlaceholder' : 'moveToNextPlaceholder');
@@ -3170,6 +3260,12 @@
         if (tryIntegralArrowNav('right')) {
           e.preventDefault();
           e.stopPropagation();
+        }
+      } else if (e.key === 'Tab') {
+        if (tryIntegralTabNav(!e.shiftKey)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
         }
       }
     }, true);

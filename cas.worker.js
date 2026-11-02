@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.21';
+const WORKER_VERSION = 'v1.25';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -281,6 +281,15 @@ function latexToGiac(rawLatex) {
     .replace(/\\!/g, '')
     .replace(/\\ /g, ' ');
 
+  // Multiplicación implícita antes de funciones matemáticas y constantes (ej. x\sin(x) -> x*\sin(x), 2\pi -> 2*\pi)
+  // Se ignora si el prefijo es un comando TeX (como \int, \sum, \lim)
+  const fnTokenList = 'sin|cos|tan|csc|sec|cot|arcsin|arccos|arctan|asin|acos|atan|sinh|cosh|tanh|ln|log|exp|sqrt|pi|exponentialE|imaginaryI';
+  const implicitFnRegex = new RegExp('(\\\\?[a-zA-Z0-9_]+|\\))\\s*(\\\\(' + fnTokenList + ')\\b)', 'g');
+  s = s.replace(implicitFnRegex, (match, prefix, fnCmd) => {
+    if (prefix.startsWith('\\')) return match;
+    return prefix + '*' + fnCmd;
+  });
+
   // Funciones trigonométricas inversas antes de procesar exponentes
   s = s
     .replace(/\\sin\s*\^\s*\{-1\}/g, 'asin')
@@ -542,7 +551,9 @@ function latexToGiac(rawLatex) {
     .replace(/\\exponentialE\b/g, 'e')
     .replace(/\\imaginaryI\b/g, 'i')
     .replace(/\\pi\b/g, 'pi')
-    .replace(/\\infty\b/g, 'infinity')
+    .replace(/\+\s*\\infty\b/g, '+infinity')
+    .replace(/-\s*\\infty\b/g, '-infinity')
+    .replace(/\\infty\b/g, '+infinity')
     .replace(/\\alpha\b/g, 'alpha')
     .replace(/\\beta\b/g, 'beta')
     .replace(/\\gamma\b/g, 'gamma')
@@ -988,7 +999,11 @@ function expandTIFunctions(input) {
       return `evalf(binomial_cdf(${n}, ${p}, ${up}))`;
     }
     const [n, p, low, up] = a;
-    return `evalf(binomial_cdf(${n}, ${p}, ${up}) - binomial_cdf(${n}, ${p}, (${low}) - 1))`;
+    const cleanLow = String(low).trim();
+    if (!isNaN(cleanLow) && Number(cleanLow) <= 0) {
+      return `evalf(binomial_cdf(${n}, ${p}, ${up}))`;
+    }
+    return `evalf(binomial_cdf(${n}, ${p}, ${up}) - when((${low}) <= 0, 0, binomial_cdf(${n}, ${p}, (${low}) - 1)))`;
   });
   s = replaceFunctionCalls(s, 'poissPdf', (a) => {
     const [lambda, x] = a;
@@ -1000,7 +1015,11 @@ function expandTIFunctions(input) {
       return `evalf(poisson_cdf(${lambda}, ${up}))`;
     }
     const [lambda, low, up] = a;
-    return `evalf(poisson_cdf(${lambda}, ${up}) - poisson_cdf(${lambda}, (${low}) - 1))`;
+    const cleanLow = String(low).trim();
+    if (!isNaN(cleanLow) && Number(cleanLow) <= 0) {
+      return `evalf(poisson_cdf(${lambda}, ${up}))`;
+    }
+    return `evalf(poisson_cdf(${lambda}, ${up}) - when((${low}) <= 0, 0, poisson_cdf(${lambda}, (${low}) - 1)))`;
   });
 
   // 5. Menú Matriz y Vector
@@ -1074,7 +1093,11 @@ function transpileTISyntax(rawInput) {
     .replace(/≤/g, '<=')
     .replace(/≥/g, '>=')
     .replace(/π/g, 'pi')
-    .replace(/∞/g, 'infinity')
+    .replace(/\+\s*∞/g, '+infinity')
+    .replace(/-\s*∞/g, '-infinity')
+    .replace(/∞/g, '+infinity')
+    .replace(/(^|[^a-zA-Z0-9_+-])\+?infinity\b/g, '$1+infinity')
+    .replace(/(^|[^a-zA-Z0-9_+-])-infinity\b/g, '$1-infinity')
     .replace(/𝑖/g, 'i')
     .replace(/√\(([^)]+)\)/g, 'sqrt($1)')
     .replace(/(\d+(?:\.\d+)?)\s*ᴇ\s*([+-]?\d+)/g, '($1*10^($2))');
@@ -1188,6 +1211,21 @@ function normalizeGiacTrigPowers(latexStr) {
   return s;
 }
 
+/**
+ * Omite el operador \cdot en la salida en productos inequívocos:
+ * - Coeficiente numérico antes de variable o símbolo: 2\cdot x -> 2x, 2\cdot \pi -> 2\pi
+ * - Factores con paréntesis: 2\cdot (x+1) -> 2(x+1), x\cdot (x+1) -> x(x+1), (x-1)\cdot (x+1) -> (x-1)(x+1)
+ * Se preserva intacto entre dos variables (x\cdot y) y entre dos números (2\cdot 3).
+ */
+function cleanOutputMultiplicationDots(latexStr) {
+  let s = latexStr;
+  s = s.replace(/([0-9])\s*\\cdot\s*([a-zA-Z\\](?![0-9]))/g, '$1$2');
+  s = s.replace(/([0-9a-zA-Z_])\s*\\cdot\s*(\(|\\left\()/g, '$1$2');
+  s = s.replace(/(\)|\\right\))\s*\\cdot\s*(\(|\\left\()/g, '$1$2');
+  s = s.replace(/(\)|\\right\))\s*\\cdot\s*([0-9a-zA-Z_]|\\left\(|\()/g, '$1$2');
+  return s;
+}
+
 function giacExprToLatex(exprStr) {
   if (!exprStr) return '';
   const rawLatex = caseval(`latex(quote(${exprStr}))`).replace(/;$/, '');
@@ -1196,6 +1234,7 @@ function giacExprToLatex(exprStr) {
     s = s.slice(1, -1);
   }
   s = normalizeGiacTrigPowers(s);
+  s = cleanOutputMultiplicationDots(s);
   s = s.replace(/\\left\(\\begin\{array\}\{[^}]*\}/g, '\\begin{bmatrix}');
   s = s.replace(/\\end\{array\}\\right\)/g, '\\end{bmatrix}');
   return s.trim();
