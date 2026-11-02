@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.19';
+const WORKER_VERSION = 'v1.21';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -1109,6 +1109,85 @@ function transpileTISyntax(rawInput) {
   };
 }
 
+function extractLatexParenGroup(str, startIdx) {
+  const cur = skipSpaces(str, startIdx);
+  if (str.startsWith('\\left(', cur)) {
+    let depth = 1;
+    let i = cur + 6;
+    while (i < str.length && depth > 0) {
+      if (str.startsWith('\\left(', i)) {
+        depth++;
+        i += 6;
+      } else if (str.startsWith('\\right)', i)) {
+        depth--;
+        i += 7;
+      } else {
+        i++;
+      }
+    }
+    if (depth === 0) {
+      return {
+        content: str.slice(cur + 6, i - 7),
+        endIdx: i
+      };
+    }
+  }
+  if (str[cur] === '(') {
+    return extractBalanced(str, cur, '(', ')');
+  }
+  return null;
+}
+
+/**
+ * Convierte la notación de Giac `\sin\^{2}x` o `\sin\^{2}\left(u\right)`
+ * al formato con paréntesis exteriores `\left(\sin\left(x\right)\right)^{2}`.
+ */
+function normalizeGiacTrigPowers(latexStr) {
+  let s = latexStr;
+  const regex = /(\\[a-zA-Z]+)\s*\\\^\s*\{/;
+  let safety = 0;
+  while (safety++ < 100) {
+    const match = regex.exec(s);
+    if (!match) break;
+
+    const fnCmd = match[1];
+    const openBraceIdx = match.index + match[0].length - 1;
+    const expBlock = extractBalanced(s, openBraceIdx, '{', '}');
+    if (!expBlock) {
+      s = s.slice(0, match.index) + `${fnCmd}^{` + s.slice(openBraceIdx + 1);
+      continue;
+    }
+
+    const expContent = normalizeGiacTrigPowers(expBlock.content);
+    const afterExp = skipSpaces(s, expBlock.endIdx);
+    let argContent = '';
+    let endArgIdx = afterExp;
+
+    const parenGroup = extractLatexParenGroup(s, afterExp);
+    if (parenGroup) {
+      argContent = normalizeGiacTrigPowers(parenGroup.content);
+      endArgIdx = parenGroup.endIdx;
+    } else {
+      const tok = extractTexArg(s, afterExp);
+      if (tok) {
+        let endTok = tok.endIdx;
+        while (endTok < s.length && (s[endTok] === '_' || s[endTok] === '^')) {
+          const subSup = extractTexArg(s, endTok + 1);
+          if (subSup) endTok = subSup.endIdx;
+          else break;
+        }
+        argContent = normalizeGiacTrigPowers(s.slice(afterExp, endTok).trim());
+        endArgIdx = endTok;
+      }
+    }
+
+    const replacement = `\\left(${fnCmd}\\left(${argContent}\\right)\\right)^{${expContent}}`;
+    s = s.slice(0, match.index) + replacement + s.slice(endArgIdx);
+  }
+  s = s.replace(/\\\^\s*\{/g, '^{');
+  return s;
+}
+
 function giacExprToLatex(exprStr) {
   if (!exprStr) return '';
   const rawLatex = caseval(`latex(quote(${exprStr}))`).replace(/;$/, '');
@@ -1116,6 +1195,7 @@ function giacExprToLatex(exprStr) {
   if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
     s = s.slice(1, -1);
   }
+  s = normalizeGiacTrigPowers(s);
   s = s.replace(/\\left\(\\begin\{array\}\{[^}]*\}/g, '\\begin{bmatrix}');
   s = s.replace(/\\end\{array\}\\right\)/g, '\\end{bmatrix}');
   return s.trim();

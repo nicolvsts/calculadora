@@ -799,7 +799,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.19</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.21</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1310,7 +1310,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.19';
+    const APP_VERSION = 'v1.21';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -2615,6 +2615,153 @@
     angleIndicator.addEventListener('click', toggleAngleMode);
 
     // =========================================================
+    // NAVEGACIÓN PERSONALIZADA CON FLECHAS EN INTEGRALES DEFINIDAS
+    // (\overset{sup}{\underset{inf}{\int}} integrando \, \mathrm{d}var)
+    // =========================================================
+    function findUndersetChild(oversetAtom) {
+      if (!oversetAtom || oversetAtom.command !== '\\overset' || !Array.isArray(oversetAtom.body)) {
+        return null;
+      }
+      return oversetAtom.body.find((c) => c && c.command === '\\underset') || null;
+    }
+
+    function setModelCursor(model, offset) {
+      model.setPositionHandlingPlaceholder(offset);
+      mf.selection = model.selection;
+      focusEntryBar();
+    }
+
+    function focusIntegralBranch(model, branch, edge = 'end') {
+      if (!Array.isArray(branch) || branch.length === 0) return false;
+      const ph = branch.find((a) => a && a.type === 'placeholder');
+      if (ph) {
+        setModelCursor(model, model.offsetOf(ph));
+        return true;
+      }
+      const target = edge === 'start' ? branch[0] : branch[branch.length - 1];
+      setModelCursor(model, model.offsetOf(target));
+      return true;
+    }
+
+    function tryIntegralArrowNav(dir) {
+      if (modalNav.isOpen || selectedHistoryIndex !== -1) return false;
+      const model = mf && mf._mathfield && mf._mathfield.model;
+      if (!model) return false;
+
+      const curAtom = model.at(model.position);
+      if (!curAtom) return false;
+
+      // 1. Detectar si el cursor está dentro del límite inferior (\underset.below) o superior (\overset.above)
+      let node = curAtom;
+      let lowerOverset = null;
+      let lowerUnderset = null;
+      let upperOverset = null;
+
+      while (node) {
+        if (
+          node.parentBranch === 'below' &&
+          node.parent &&
+          node.parent.command === '\\underset' &&
+          node.parent.parent &&
+          node.parent.parent.command === '\\overset'
+        ) {
+          lowerUnderset = node.parent;
+          lowerOverset = node.parent.parent;
+          break;
+        }
+        if (
+          node.parentBranch === 'above' &&
+          node.parent &&
+          node.parent.command === '\\overset' &&
+          findUndersetChild(node.parent)
+        ) {
+          upperOverset = node.parent;
+          break;
+        }
+        node = node.parent;
+      }
+
+      // Caso A: El cursor está en el LÍMITE INFERIOR
+      if (lowerOverset && lowerUnderset) {
+        const belowBranch = lowerUnderset.below || [];
+        if (dir === 'up') {
+          return focusIntegralBranch(model, lowerOverset.above, 'end');
+        }
+        if (dir === 'down') {
+          return true; // Ya estamos en el límite inferior; evitar que baje o cree ramas vacías
+        }
+        if (dir === 'right') {
+          const atRightEdge =
+            model.selectionIsPlaceholder ||
+            (curAtom.parent === lowerUnderset && curAtom === belowBranch[belowBranch.length - 1]);
+          if (atRightEdge) {
+            setModelCursor(model, model.offsetOf(lowerOverset));
+            return true;
+          }
+        }
+        if (dir === 'left') {
+          const atLeftEdge =
+            model.selectionIsPlaceholder ||
+            (curAtom.parent === lowerUnderset && curAtom === belowBranch[0]);
+          if (atLeftEdge && lowerOverset.leftSibling) {
+            setModelCursor(model, model.offsetOf(lowerOverset.leftSibling));
+            return true;
+          }
+        }
+        return false;
+      }
+
+      // Caso B: El cursor está en el LÍMITE SUPERIOR
+      if (upperOverset) {
+        const aboveBranch = upperOverset.above || [];
+        const undersetChild = findUndersetChild(upperOverset);
+        if (dir === 'down' && undersetChild) {
+          return focusIntegralBranch(model, undersetChild.below, 'end');
+        }
+        if (dir === 'up') {
+          return true; // Ya estamos en el límite superior; evitar saltar al historial
+        }
+        if (dir === 'right') {
+          const atRightEdge =
+            model.selectionIsPlaceholder ||
+            (curAtom.parent === upperOverset && curAtom === aboveBranch[aboveBranch.length - 1]);
+          if (atRightEdge) {
+            setModelCursor(model, model.offsetOf(upperOverset));
+            return true;
+          }
+        }
+        if (dir === 'left') {
+          const atLeftEdge =
+            model.selectionIsPlaceholder ||
+            (curAtom.parent === upperOverset && curAtom === aboveBranch[0]);
+          if (atLeftEdge && upperOverset.leftSibling) {
+            setModelCursor(model, model.offsetOf(upperOverset.leftSibling));
+            return true;
+          }
+        }
+        return false;
+      }
+
+      // Caso C: El cursor está al inicio del INTEGRANDO (justo a la derecha de la integral) y pulsa Flecha Izquierda (◀)
+      if (dir === 'left') {
+        // Subcaso C1: el integrando es un placeholder seleccionado (#?) cuyo hermano izquierdo es la integral
+        if (
+          model.selectionIsPlaceholder &&
+          curAtom.type === 'placeholder' &&
+          findUndersetChild(curAtom.leftSibling)
+        ) {
+          return focusIntegralBranch(model, curAtom.leftSibling.above, 'end');
+        }
+        // Subcaso C2: el cursor está colapsado justo después del nodo \overset de la integral
+        if (model.selectionIsCollapsed && findUndersetChild(curAtom)) {
+          return focusIntegralBranch(model, curAtom.above, 'end');
+        }
+      }
+
+      return false;
+    }
+
+    // =========================================================
     // DESPACHADOR CENTRAL DE TODAS LAS TECLAS DE LA CARCASA
     // =========================================================
     function handleHardwareKey(keyId) {
@@ -2687,6 +2834,7 @@
             moveModalFocus('up');
             return;
           }
+          if (tryIntegralArrowNav('up')) return;
           // Si no estamos en el historial, primero intentamos subir dentro de una estructura 2D (fracción, matriz, integral)
           if (selectedHistoryIndex === -1 && getMfLatex().trim() !== '' && typeof mf.executeCommand === 'function') {
             const beforePos = mf.position;
@@ -2725,6 +2873,7 @@
             }
             return;
           }
+          if (tryIntegralArrowNav('down')) return;
           focusEntryBar();
           if (typeof mf.executeCommand === 'function') {
             mf.executeCommand('moveDown');
@@ -2741,6 +2890,7 @@
             moveModalFocus('left');
             return;
           }
+          if (tryIntegralArrowNav('left')) return;
           focusEntryBar();
           if (typeof mf.executeCommand === 'function') {
             mf.executeCommand('moveToPreviousChar');
@@ -2756,6 +2906,7 @@
             moveModalFocus('right');
             return;
           }
+          if (tryIntegralArrowNav('right')) return;
           focusEntryBar();
           if (typeof mf.executeCommand === 'function') {
             mf.executeCommand('moveToNextChar');
@@ -3010,6 +3161,16 @@
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         handleHardwareKey('down');
+      } else if (e.key === 'ArrowLeft' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        if (tryIntegralArrowNav('left')) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      } else if (e.key === 'ArrowRight' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        if (tryIntegralArrowNav('right')) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
       }
     }, true);
 
