@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.25';
+const WORKER_VERSION = 'v1.26';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -1219,20 +1219,30 @@ function normalizeGiacTrigPowers(latexStr) {
  */
 function cleanOutputMultiplicationDots(latexStr) {
   let s = latexStr;
-  s = s.replace(/([0-9])\s*\\cdot\s*([a-zA-Z\\](?![0-9]))/g, '$1$2');
+  s = s.replace(/([0-9])\s*\\cdot\s*(?!\\(?:d|t)?frac\b)([a-zA-Z\\](?![0-9]))/g, '$1$2');
   s = s.replace(/([0-9a-zA-Z_])\s*\\cdot\s*(\(|\\left\()/g, '$1$2');
   s = s.replace(/(\)|\\right\))\s*\\cdot\s*(\(|\\left\()/g, '$1$2');
-  s = s.replace(/(\)|\\right\))\s*\\cdot\s*([0-9a-zA-Z_]|\\left\(|\()/g, '$1$2');
+  s = s.replace(/(\)|\\right\))\s*\\cdot\s*(?!\\(?:d|t)?frac\b)([0-9a-zA-Z_]|\\left\(|\()/g, '$1$2');
   return s;
 }
 
 function giacExprToLatex(exprStr) {
   if (!exprStr) return '';
-  const rawLatex = caseval(`latex(quote(${exprStr}))`).replace(/;$/, '');
-  let s = rawLatex.trim();
+  let rawLatex = caseval(`latex(${exprStr})`).replace(/;$/, '').trim();
+  if (
+    !rawLatex ||
+    rawLatex === 'undef' ||
+    rawLatex.startsWith('GIAC_ERROR') ||
+    rawLatex.toLowerCase().startsWith('error') ||
+    rawLatex.includes('syntax error')
+  ) {
+    rawLatex = caseval(`latex(quote(${exprStr}))`).replace(/;$/, '').trim();
+  }
+  let s = rawLatex;
   if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
     s = s.slice(1, -1);
   }
+  s = s.replace(/\\frac\{\(([^()]+)\)\}/g, '\\frac{$1}');
   s = normalizeGiacTrigPowers(s);
   s = cleanOutputMultiplicationDots(s);
   s = s.replace(/\\left\(\\begin\{array\}\{[^}]*\}/g, '\\begin{bmatrix}');
@@ -1338,8 +1348,8 @@ self.onmessage = (event) => {
         return;
       }
 
-      const finalGiacCmd = forceApprox ? `evalf(${giacExpr})` : giacExpr;
-      const rawGiacOut = caseval(finalGiacCmd).replace(/;$/, '').trim();
+      const SKIP_SIMPLIFY_RE = /^(?:factor|cfactor|partfrac|propfrac|expand|texpand|tcollect|rref|ref|egvl|egv|solve|csolve|nsolve|zeros|czeros|desolve|normald)\s*\(/i;
+      let rawGiacOut = caseval(giacExpr).replace(/;$/, '').trim();
 
       if (
         !rawGiacOut ||
@@ -1351,9 +1361,37 @@ self.onmessage = (event) => {
         throw new Error((rawGiacOut || 'Expresión indefinida').replace(/^GIAC_ERROR:\s*/i, ''));
       }
 
+      const cleanInitialOut = rawGiacOut.replace(/^list\[/, '[');
+      if (forceApprox) {
+        const approxStep = caseval(`regroup(evalf(${cleanInitialOut}))`).replace(/;$/, '').trim();
+        if (
+          approxStep &&
+          approxStep !== 'undef' &&
+          !approxStep.startsWith('GIAC_ERROR') &&
+          !approxStep.toLowerCase().startsWith('error') &&
+          !approxStep.includes('syntax error')
+        ) {
+          rawGiacOut = approxStep;
+        }
+      } else if (!SKIP_SIMPLIFY_RE.test(giacExpr.trim())) {
+        const simplifiedStep = caseval(`simplify(${cleanInitialOut})`).replace(/;$/, '').trim();
+        if (
+          simplifiedStep &&
+          simplifiedStep !== 'undef' &&
+          !simplifiedStep.startsWith('GIAC_ERROR') &&
+          !simplifiedStep.toLowerCase().startsWith('error') &&
+          !simplifiedStep.includes('syntax error')
+        ) {
+          rawGiacOut = simplifiedStep;
+        }
+      }
+
       const rawOutput = rawGiacOut.replace(/^list\[/, '[');
+      if (assignedSymbol) {
+        caseval(`${assignedSymbol} := (${rawOutput})`);
+      }
       const exactLatex = giacExprToLatex(rawOutput);
-      const approxGiacOut = caseval(`evalf(${rawOutput})`).replace(/;$/, '').trim();
+      const approxGiacOut = caseval(`regroup(evalf(${rawOutput}))`).replace(/;$/, '').trim();
       const approxRaw = approxGiacOut.replace(/^list\[/, '[');
       const approxLatex =
         approxRaw && !approxRaw.startsWith('GIAC_ERROR')
