@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.28';
+const WORKER_VERSION = 'v1.29';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -967,7 +967,7 @@ function expandTIFunctions(input) {
   });
   s = replaceFunctionCalls(s, 'invNorm', (a) => {
     const [area, mu = '0', sigma = '1'] = a;
-    return `evalf(normald_icdf(${mu}, ${sigma}, ${area}))`;
+    return `when(abs((${area}) - 1/2) < 1e-15, ${mu}, evalf(normald_icdf(${mu}, ${sigma}, ${area})))`;
   });
   s = replaceFunctionCalls(s, 'tPdf', (a) => {
     const [x, df] = a;
@@ -979,7 +979,7 @@ function expandTIFunctions(input) {
   });
   s = replaceFunctionCalls(s, 'invT', (a) => {
     const [area, df] = a;
-    return `evalf(studentd_icdf(${df}, ${area}))`;
+    return `when(abs((${area}) - 1/2) < 1e-15, 0, evalf(studentd_icdf(${df}, ${area})))`;
   });
   s = replaceFunctionCalls(s, 'chi2Pdf', (a) => {
     const [x, df] = a;
