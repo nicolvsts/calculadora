@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.27';
+const WORKER_VERSION = 'v1.28';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -1348,7 +1348,7 @@ self.onmessage = (event) => {
         return;
       }
 
-      const SKIP_SIMPLIFY_RE = /^(?:factor|cfactor|partfrac|propfrac|expand|texpand|tcollect|rref|ref|egvl|egv|solve|csolve|nsolve|zeros|czeros|desolve|normald)\s*\(/i;
+      const SKIP_SIMPLIFY_RE = /^(?:factor|cfactor|partfrac|propfrac|expand|texpand|tcollect|rref|ref|egvl|egv|solve|csolve|nsolve|zeros|czeros|desolve|normald|studentd|chisquared)\s*\(/i;
       let rawGiacOut = caseval(giacExpr).replace(/;$/, '').trim();
 
       if (

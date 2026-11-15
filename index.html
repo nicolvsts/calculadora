@@ -491,6 +491,44 @@
       color: #0c4a6e;
     }
 
+    .dist-menu .dist-input-box {
+      min-width: 82px;
+      max-width: 145px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      border: 1.5px solid #94a3b8;
+      background: #ffffff;
+      color: #0f172a;
+      font-family: 'Cambria Math', 'Consolas', monospace;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-align: right;
+      min-height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .dist-menu .menu-row.focused-item .dist-input-box {
+      border-color: #0284c7;
+      box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.25);
+    }
+
+    .dist-menu .dist-input-placeholder {
+      color: #94a3b8;
+      font-weight: 500;
+      font-size: 0.7rem;
+    }
+
+    .dist-menu .dist-input-pristine {
+      background: #e0f2fe;
+      color: #0369a1;
+      border-radius: 2px;
+      padding: 0 3px;
+    }
+
     /* =====================================================
        BOTONERA FÍSICA DE ALTA RESOLUCIÓN (4 BLOQUES)
        ESTILO 1: SERIGRAFÍA ORIGINAL TI-NSPIRE (HUMANISTA + MATH + SVG)
@@ -799,7 +837,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.27</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.28</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1310,7 +1348,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.27';
+    const APP_VERSION = 'v1.28';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -1365,7 +1403,9 @@
       items: [],
       focusIndex: 0,
       onBack: null,
-      onSwitchTab: null
+      onSwitchTab: null,
+      onDigit: null,
+      onKeyAction: null
     };
 
     function getMfLatex() {
@@ -1931,6 +1971,8 @@
       modalNav.onBack = options.onBack || null;
       modalNav.onSwitchTab = options.onSwitchTab || null;
       modalNav.onDigit = options.onDigit || null;
+      modalNav.onKeyAction = options.onKeyAction || null;
+      modalNav.onFocusChange = options.onFocusChange || null;
 
       renderFn(modalBodyEl);
       modalEl.classList.add('open');
@@ -1949,6 +1991,8 @@
       modalNav.onBack = null;
       modalNav.onSwitchTab = null;
       modalNav.onDigit = null;
+      modalNav.onKeyAction = null;
+      modalNav.onFocusChange = null;
       focusEntryBar();
     }
 
@@ -1960,6 +2004,9 @@
           el.scrollIntoView({ block: 'nearest' });
         }
       });
+      if (typeof modalNav.onFocusChange === 'function') {
+        modalNav.onFocusChange();
+      }
     }
 
     function moveModalFocus(dir) {
@@ -2182,6 +2229,409 @@
       );
     }
 
+    // Definición de las 12 distribuciones de probabilidad (estilo asistente TI-Nspire CX CAS)
+    const DISTRIBUTION_DEFS = {
+      normPdf: {
+        shortcut: '1',
+        menuLabel: '1: fdP normal...',
+        title: 'fdP normal (normPdf)',
+        fnName: 'normPdf',
+        fields: [
+          { key: 'x', label: 'Valor x:', defaultVal: '', placeholder: 'Ej. 0' },
+          { key: 'mu', label: 'Media (μ):', defaultVal: '0', placeholder: '0' },
+          { key: 'sigma', label: 'Desv. est. (σ):', defaultVal: '1', placeholder: '1' }
+        ]
+      },
+      normCdf: {
+        shortcut: '2',
+        menuLabel: '2: fdA normal...',
+        title: 'fdA normal (normCdf)',
+        fnName: 'normCdf',
+        fields: [
+          { key: 'low', label: 'Límite inferior:', defaultVal: '-∞', placeholder: '-∞', allowInf: true },
+          { key: 'up', label: 'Límite superior:', defaultVal: '', placeholder: 'Ej. 1.96', allowInf: true },
+          { key: 'mu', label: 'Media (μ):', defaultVal: '0', placeholder: '0' },
+          { key: 'sigma', label: 'Desv. est. (σ):', defaultVal: '1', placeholder: '1' }
+        ]
+      },
+      invNorm: {
+        shortcut: '3',
+        menuLabel: '3: Normal inversa...',
+        title: 'Normal inversa (invNorm)',
+        fnName: 'invNorm',
+        fields: [
+          { key: 'area', label: 'Área:', defaultVal: '', placeholder: '0 < área < 1' },
+          { key: 'mu', label: 'Media (μ):', defaultVal: '0', placeholder: '0' },
+          { key: 'sigma', label: 'Desv. est. (σ):', defaultVal: '1', placeholder: '1' }
+        ]
+      },
+      tPdf: {
+        shortcut: '4',
+        menuLabel: '4: fdP t...',
+        title: 'fdP t (tPdf)',
+        fnName: 'tPdf',
+        fields: [
+          { key: 'x', label: 'Valor x:', defaultVal: '', placeholder: 'Ej. 0' },
+          { key: 'df', label: 'Grados de libertad (gl):', defaultVal: '', placeholder: 'gl > 0' }
+        ]
+      },
+      tCdf: {
+        shortcut: '5',
+        menuLabel: '5: fdA t...',
+        title: 'fdA t (tCdf)',
+        fnName: 'tCdf',
+        fields: [
+          { key: 'low', label: 'Límite inferior:', defaultVal: '-∞', placeholder: '-∞', allowInf: true },
+          { key: 'up', label: 'Límite superior:', defaultVal: '', placeholder: 'Ej. 2.1', allowInf: true },
+          { key: 'df', label: 'Grados de libertad (gl):', defaultVal: '', placeholder: 'gl > 0' }
+        ]
+      },
+      invT: {
+        shortcut: '6',
+        menuLabel: '6: t inversa...',
+        title: 't inversa (invT)',
+        fnName: 'invT',
+        fields: [
+          { key: 'area', label: 'Área:', defaultVal: '', placeholder: '0 < área < 1' },
+          { key: 'df', label: 'Grados de libertad (gl):', defaultVal: '', placeholder: 'gl > 0' }
+        ]
+      },
+      chi2Pdf: {
+        shortcut: '7',
+        menuLabel: '7: fdP χ²...',
+        title: 'fdP χ² (chi2Pdf)',
+        fnName: 'chi2Pdf',
+        fields: [
+          { key: 'x', label: 'Valor x:', defaultVal: '', placeholder: 'x ≥ 0' },
+          { key: 'df', label: 'Grados de libertad (gl):', defaultVal: '', placeholder: 'gl > 0' }
+        ]
+      },
+      chi2Cdf: {
+        shortcut: '8',
+        menuLabel: '8: fdA χ²...',
+        title: 'fdA χ² (chi2Cdf)',
+        fnName: 'chi2Cdf',
+        fields: [
+          { key: 'low', label: 'Límite inferior:', defaultVal: '0', placeholder: '0', allowInf: true },
+          { key: 'up', label: 'Límite superior:', defaultVal: '', placeholder: 'Ej. 5.99', allowInf: true },
+          { key: 'df', label: 'Grados de libertad (gl):', defaultVal: '', placeholder: 'gl > 0' }
+        ]
+      },
+      binomPdf: {
+        shortcut: '9',
+        menuLabel: '9: fdP binomial...',
+        title: 'fdP binomial (binomPdf)',
+        fnName: 'binomPdf',
+        fields: [
+          { key: 'n', label: 'Núm. de ensayos (n):', defaultVal: '', placeholder: 'Entero n' },
+          { key: 'p', label: 'Prob. de éxito (p):', defaultVal: '', placeholder: '0 ≤ p ≤ 1' },
+          { key: 'x', label: 'Valor x:', defaultVal: '', placeholder: 'Entero x' }
+        ]
+      },
+      binomCdf: {
+        shortcut: 'a',
+        menuLabel: 'A: fdA binomial...',
+        title: 'fdA binomial (binomCdf)',
+        fnName: 'binomCdf',
+        fields: [
+          { key: 'n', label: 'Núm. de ensayos (n):', defaultVal: '', placeholder: 'Entero n' },
+          { key: 'p', label: 'Prob. de éxito (p):', defaultVal: '', placeholder: '0 ≤ p ≤ 1' },
+          { key: 'low', label: 'Límite inferior:', defaultVal: '0', placeholder: '0' },
+          { key: 'up', label: 'Límite superior:', defaultVal: '', placeholder: 'Entero k' }
+        ]
+      },
+      poissPdf: {
+        shortcut: 'b',
+        menuLabel: 'B: fdP de Poisson...',
+        title: 'fdP de Poisson (poissPdf)',
+        fnName: 'poissPdf',
+        fields: [
+          { key: 'lambda', label: 'Media (λ):', defaultVal: '', placeholder: 'λ > 0' },
+          { key: 'x', label: 'Valor x:', defaultVal: '', placeholder: 'Entero x' }
+        ]
+      },
+      poissCdf: {
+        shortcut: 'c',
+        menuLabel: 'C: fdA de Poisson...',
+        title: 'fdA de Poisson (poissCdf)',
+        fnName: 'poissCdf',
+        fields: [
+          { key: 'lambda', label: 'Media (λ):', defaultVal: '', placeholder: 'λ > 0' },
+          { key: 'low', label: 'Límite inferior:', defaultVal: '0', placeholder: '0' },
+          { key: 'up', label: 'Límite superior:', defaultVal: '', placeholder: 'Entero k' }
+        ]
+      }
+    };
+
+    const DISTRIBUTION_ORDER = [
+      'normPdf', 'normCdf', 'invNorm',
+      'tPdf', 'tCdf', 'invT',
+      'chi2Pdf', 'chi2Cdf',
+      'binomPdf', 'binomCdf',
+      'poissPdf', 'poissCdf'
+    ];
+
+    function formatDistParamToLatex(rawStr) {
+      const s = String(rawStr || '').trim().replace(/,/g, '.');
+      if (s === '-∞' || /^-(?:inf|infinity)$/i.test(s)) return '-\\infty';
+      if (s === '∞' || s === '+∞' || /^\+?(?:inf|infinity)$/i.test(s)) return '\\infty';
+      const fracMatch = s.match(/^(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)$/);
+      if (fracMatch) {
+        return `\\frac{${fracMatch[1]}}{${fracMatch[2]}}`;
+      }
+      return s.replace(/∞/g, '\\infty ').replace(/π/g, '\\pi ');
+    }
+
+    // Ventana asistente de parámetros para cualquiera de las 12 distribuciones
+    function openDistributionModal(distKey, onBackFn = null) {
+      const def = DISTRIBUTION_DEFS[distKey];
+      if (!def) return;
+
+      const fieldValues = def.fields.map((f) => f.defaultVal || '');
+      const fieldPristine = def.fields.map((f) => Boolean(f.defaultVal));
+      let updateUI = () => {};
+
+      const submitDistribution = () => {
+        const emptyIdx = fieldValues.findIndex((v) => String(v).trim() === '');
+        if (emptyIdx !== -1) {
+          modalNav.focusIndex = emptyIdx;
+          updateModalFocus();
+          showToast(`Completa: ${def.fields[emptyIdx].label.replace(/:$/, '')}`);
+          return;
+        }
+        const latexArgs = fieldValues.map(formatDistParamToLatex).join(', ');
+        const fullLatex = `\\mathrm{${def.fnName}}\\left(${latexArgs}\\right)`;
+        closeModal();
+        insertLatex(fullLatex);
+        if (!getMfLatex().trim()) {
+          setMfLatex(fullLatex);
+        }
+        evaluateCurrentInput(false);
+      };
+
+      openModal(
+        `${def.title} (◀ Volver)`,
+        (body) => {
+          const list = document.createElement('div');
+          list.className = 'menu-list matrix-menu dist-menu';
+          list.style.gap = '4px';
+          list.style.padding = '2px';
+
+          const valueBoxes = [];
+
+          def.fields.forEach((f, idx) => {
+            const row = document.createElement('div');
+            row.className = 'menu-row';
+            row.style.padding = '4px 8px';
+
+            const lbl = document.createElement('span');
+            lbl.style.fontWeight = '700';
+            lbl.style.fontSize = '0.75rem';
+            lbl.textContent = f.label;
+
+            const rightWrap = document.createElement('div');
+            rightWrap.style.display = 'inline-flex';
+            rightWrap.style.alignItems = 'center';
+            rightWrap.style.gap = '4px';
+
+            if (f.allowInf) {
+              const btnNegInf = document.createElement('button');
+              btnNegInf.className = 'approx-chip';
+              btnNegInf.style.padding = '1px 5px';
+              btnNegInf.style.fontSize = '0.7rem';
+              btnNegInf.textContent = '-∞';
+              btnNegInf.title = 'Límite -∞';
+              btnNegInf.addEventListener('click', (e) => {
+                e.stopPropagation();
+                fieldValues[idx] = '-∞';
+                fieldPristine[idx] = false;
+                modalNav.focusIndex = idx;
+                updateModalFocus();
+              });
+
+              const btnPosInf = document.createElement('button');
+              btnPosInf.className = 'approx-chip';
+              btnPosInf.style.padding = '1px 5px';
+              btnPosInf.style.fontSize = '0.7rem';
+              btnPosInf.textContent = '+∞';
+              btnPosInf.title = 'Límite +∞';
+              btnPosInf.addEventListener('click', (e) => {
+                e.stopPropagation();
+                fieldValues[idx] = '∞';
+                fieldPristine[idx] = false;
+                modalNav.focusIndex = idx;
+                updateModalFocus();
+              });
+
+              rightWrap.appendChild(btnNegInf);
+              rightWrap.appendChild(btnPosInf);
+            }
+
+            const valBox = document.createElement('span');
+            valBox.className = 'dist-input-box';
+            rightWrap.appendChild(valBox);
+            valueBoxes.push(valBox);
+
+            row.addEventListener('click', () => {
+              modalNav.focusIndex = idx;
+              updateModalFocus();
+            });
+
+            row.appendChild(lbl);
+            row.appendChild(rightWrap);
+            list.appendChild(row);
+          });
+
+          const actionsWrap = document.createElement('div');
+          actionsWrap.style.display = 'grid';
+          actionsWrap.style.gridTemplateColumns = '2fr 1fr';
+          actionsWrap.style.gap = '6px';
+          actionsWrap.style.marginTop = '3px';
+
+          const confirmRow = document.createElement('div');
+          confirmRow.className = 'menu-row matrix-confirm-row';
+          confirmRow.style.padding = '5px 8px';
+          confirmRow.textContent = 'OK ↵';
+          confirmRow.addEventListener('click', submitDistribution);
+
+          const cancelRow = document.createElement('div');
+          cancelRow.className = 'menu-row';
+          cancelRow.style.justifyContent = 'center';
+          cancelRow.style.background = '#f8fafc';
+          cancelRow.style.border = '1px solid #cbd5e1';
+          cancelRow.style.color = '#475569';
+          cancelRow.style.fontWeight = '600';
+          cancelRow.style.padding = '5px 8px';
+          cancelRow.textContent = 'Cancelar';
+          cancelRow.addEventListener('click', () => {
+            if (onBackFn) onBackFn();
+            else closeModal();
+          });
+
+          actionsWrap.appendChild(confirmRow);
+          actionsWrap.appendChild(cancelRow);
+          list.appendChild(actionsWrap);
+
+          const hint = document.createElement('div');
+          hint.style.fontSize = '0.65rem';
+          hint.style.color = '#64748b';
+          hint.style.textAlign = 'center';
+          hint.style.marginTop = '2px';
+          hint.textContent = 'Usa teclado/botones (0–9, ., (-), ÷, del), ▼/tab para avanzar y OK ↵';
+
+          updateUI = () => {
+            valueBoxes.forEach((box, idx) => {
+              const val = fieldValues[idx];
+              const isFocused = modalNav.focusIndex === idx;
+              box.innerHTML = '';
+              if (!val) {
+                const ph = document.createElement('span');
+                ph.className = 'dist-input-placeholder';
+                ph.textContent = isFocused ? '▏' : (def.fields[idx].placeholder || '');
+                box.appendChild(ph);
+              } else {
+                const span = document.createElement('span');
+                if (isFocused && fieldPristine[idx]) {
+                  span.className = 'dist-input-pristine';
+                  span.textContent = val;
+                } else {
+                  span.textContent = isFocused ? `${val}▏` : val;
+                }
+                box.appendChild(span);
+              }
+            });
+          };
+          updateUI();
+
+          body.appendChild(list);
+          body.appendChild(hint);
+        },
+        {
+          mode: 'list',
+          initialIndex: 0,
+          onBack: onBackFn,
+          onFocusChange: () => updateUI(),
+          onKeyAction: (keyStr) => {
+            const idx = modalNav.focusIndex;
+            const numFields = def.fields.length;
+
+            if (keyStr === 'ENTER') {
+              if (idx === numFields) {
+                submitDistribution();
+                return;
+              }
+              if (idx === numFields + 1) {
+                if (onBackFn) onBackFn();
+                else closeModal();
+                return;
+              }
+              const emptyIdx = fieldValues.findIndex((v) => String(v).trim() === '');
+              if (emptyIdx === -1) {
+                submitDistribution();
+                return;
+              }
+              if (String(fieldValues[idx]).trim() === '') {
+                showToast(`Completa: ${def.fields[idx].label.replace(/:$/, '')}`);
+                return;
+              }
+              modalNav.focusIndex = emptyIdx;
+              updateModalFocus();
+              return;
+            }
+
+            if (idx < 0 || idx >= numFields) return;
+
+            if (keyStr === 'BACKSPACE') {
+              if (fieldPristine[idx] || fieldValues[idx] === '-∞' || fieldValues[idx] === '+∞' || fieldValues[idx] === '∞') {
+                fieldValues[idx] = '';
+                fieldPristine[idx] = false;
+              } else {
+                fieldValues[idx] = fieldValues[idx].slice(0, -1);
+              }
+              updateUI();
+              return;
+            }
+
+            if (fieldPristine[idx]) {
+              fieldValues[idx] = keyStr;
+              fieldPristine[idx] = false;
+            } else {
+              fieldValues[idx] += keyStr;
+            }
+            updateUI();
+          }
+        }
+      );
+    }
+
+    // Submenú anidado "4: Distribuciones" dentro de "5: Probabilidad"
+    function openDistributionsSubmenu(onBackFn = null) {
+      openModal(
+        '4: Distribuciones (◀ Volver)',
+        (body) => {
+          const list = document.createElement('div');
+          list.className = 'menu-list';
+          DISTRIBUTION_ORDER.forEach((distKey) => {
+            const def = DISTRIBUTION_DEFS[distKey];
+            const row = document.createElement('div');
+            row.className = 'menu-row';
+            row.dataset.shortcut = def.shortcut;
+            row.textContent = def.menuLabel;
+            row.addEventListener('click', () => {
+              openDistributionModal(distKey, () => openDistributionsSubmenu(onBackFn));
+            });
+            list.appendChild(row);
+          });
+          body.appendChild(list);
+        },
+        {
+          mode: 'list',
+          initialIndex: 0,
+          onBack: onBackFn
+        }
+      );
+    }
+
     // 1. Paleta Trigonométrica (trig▸)
     function openTrigPalette() {
       openModal('Trigonometría (trig▸)', (body) => {
@@ -2329,12 +2779,12 @@
             { name: 'abs(x)', latex: '\\left|#?\\right|', desc: 'Valor absoluto o módulo' },
             { name: 'approx(expr)', latex: '\\mathrm{approx}\\left(#?\\right)', desc: 'Aproximación decimal' },
             { name: 'arcLen(expr, var, a, b)', latex: '\\mathrm{arcLen}\\left(#?, x, #?, #?\\right)', desc: 'Longitud de arco' },
-            { name: 'binomCdf(n, p, low, up)', latex: '\\mathrm{binomCdf}\\left(#?, #?, #?, #?\\right)', desc: 'Acumulada Binomial' },
-            { name: 'binomPdf(n, p, x)', latex: '\\mathrm{binomPdf}\\left(#?, #?, #?\\right)', desc: 'Densidad Binomial puntual' },
+            { name: 'binomCdf(n, p, low, up)', distKey: 'binomCdf', latex: '\\mathrm{binomCdf}\\left(#?, #?, #?, #?\\right)', desc: 'Acumulada Binomial' },
+            { name: 'binomPdf(n, p, x)', distKey: 'binomPdf', latex: '\\mathrm{binomPdf}\\left(#?, #?, #?\\right)', desc: 'Densidad Binomial puntual' },
             { name: 'ceiling(x)', latex: '\\mathrm{ceiling}\\left(#?\\right)', desc: 'Menor entero >= x' },
             { name: 'cFactor(expr)', latex: '\\mathrm{cFactor}\\left(#?\\right)', desc: 'Factoriza en complejos' },
-            { name: 'chi2Cdf(low, up, df)', latex: '\\mathrm{chi2Cdf}\\left(#?, #?, #?\\right)', desc: 'Acumulada Chi-cuadrado' },
-            { name: 'chi2Pdf(x, df)', latex: '\\mathrm{chi2Pdf}\\left(#?, #?\\right)', desc: 'Densidad Chi-cuadrado' },
+            { name: 'chi2Cdf(low, up, df)', distKey: 'chi2Cdf', latex: '\\mathrm{chi2Cdf}\\left(#?, #?, #?\\right)', desc: 'Acumulada Chi-cuadrado' },
+            { name: 'chi2Pdf(x, df)', distKey: 'chi2Pdf', latex: '\\mathrm{chi2Pdf}\\left(#?, #?\\right)', desc: 'Densidad Chi-cuadrado' },
             { name: 'ClearAZ', latex: '\\mathrm{ClearAZ}', desc: 'Borra variables a–z' },
             { name: 'completeSquare(expr, var)', latex: '\\mathrm{completeSquare}\\left(#?, x\\right)', desc: 'Completa el cuadrado' },
             { name: 'conj(z)', latex: '\\mathrm{conj}\\left(#?\\right)', desc: 'Conjugado complejo' },
@@ -2358,23 +2808,24 @@
             { name: 'ifactor(n)', latex: '\\mathrm{ifactor}\\left(#?\\right)', desc: 'Factores primos de entero' },
             { name: 'impDiff(eq, x, y)', latex: '\\mathrm{impDiff}\\left(#?=#?, x, y\\right)', desc: 'Derivación implícita' },
             { name: 'integrate (Integral 2D)', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?', desc: 'Integral definida 2D' },
-            { name: 'invNorm(area, μ, σ)', latex: '\\mathrm{invNorm}\\left(#?, 0, 1\\right)', desc: 'Inversa Normal' },
-            { name: 'invT(area, df)', latex: '\\mathrm{invT}\\left(#?, #?\\right)', desc: 'Inversa t-Student' },
+            { name: 'invNorm(area, μ, σ)', distKey: 'invNorm', latex: '\\mathrm{invNorm}\\left(#?, 0, 1\\right)', desc: 'Inversa Normal' },
+            { name: 'invT(area, df)', distKey: 'invT', latex: '\\mathrm{invT}\\left(#?, #?\\right)', desc: 'Inversa t-Student' },
             { name: 'lcm(a, b)', latex: '\\mathrm{lcm}\\left(#?, #?\\right)', desc: 'Mínimo común múltiplo' },
             { name: 'limit (Límite 2D)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)', desc: 'Límite simbólico 2D' },
             { name: 'nCr(n, r)', latex: '\\mathrm{nCr}\\left(#?, #?\\right)', desc: 'Combinaciones' },
-            { name: 'normCdf(low, up, μ, σ)', latex: '\\mathrm{normCdf}\\left(#?, #?, 0, 1\\right)', desc: 'Acumulada Normal' },
-            { name: 'normPdf(x, μ, σ)', latex: '\\mathrm{normPdf}\\left(#?, 0, 1\\right)', desc: 'Densidad Normal' },
+            { name: 'normCdf(low, up, μ, σ)', distKey: 'normCdf', latex: '\\mathrm{normCdf}\\left(#?, #?, 0, 1\\right)', desc: 'Acumulada Normal' },
+            { name: 'normPdf(x, μ, σ)', distKey: 'normPdf', latex: '\\mathrm{normPdf}\\left(#?, 0, 1\\right)', desc: 'Densidad Normal' },
             { name: 'nPr(n, r)', latex: '\\mathrm{nPr}\\left(#?, #?\\right)', desc: 'Permutaciones' },
             { name: 'nSolve(eq, var)', latex: '\\mathrm{nSolve}\\left(#?=#?, x\\right)', desc: 'Resolución numérica' },
-            { name: 'poissCdf(λ, low, up)', latex: '\\mathrm{poissCdf}\\left(#?, #?, #?\\right)', desc: 'Acumulada Poisson' },
-            { name: 'poissPdf(λ, x)', latex: '\\mathrm{poissPdf}\\left(#?, #?\\right)', desc: 'Densidad Poisson' },
+            { name: 'poissCdf(λ, low, up)', distKey: 'poissCdf', latex: '\\mathrm{poissCdf}\\left(#?, #?, #?\\right)', desc: 'Acumulada Poisson' },
+            { name: 'poissPdf(λ, x)', distKey: 'poissPdf', latex: '\\mathrm{poissPdf}\\left(#?, #?\\right)', desc: 'Densidad Poisson' },
             { name: 'propFrac(expr)', latex: '\\mathrm{propFrac}\\left(#?\\right)', desc: 'Fracciones parciales' },
             { name: 'rref(matriz)', latex: '\\mathrm{rref}\\left(#?\\right)', desc: 'Escalonada reducida' },
             { name: 'solve(eq/mat, var)', latex: '\\mathrm{solve}\\left(#?, #?\\right)', desc: 'Resuelve ecuación o sistema matricial' },
             { name: 'sum (Sumatoria 2D)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)', desc: 'Sumatoria simbólica 2D' },
             { name: 'taylor(expr, var, n, x0)', latex: '\\mathrm{taylor}\\left(#?, x, 5, 0\\right)', desc: 'Polinomio de Taylor' },
-            { name: 'tCdf(low, up, df)', latex: '\\mathrm{tCdf}\\left(#?, #?, #?\\right)', desc: 'Acumulada t-Student' },
+            { name: 'tCdf(low, up, df)', distKey: 'tCdf', latex: '\\mathrm{tCdf}\\left(#?, #?, #?\\right)', desc: 'Acumulada t-Student' },
+            { name: 'tPdf(x, df)', distKey: 'tPdf', latex: '\\mathrm{tPdf}\\left(#?, #?\\right)', desc: 'Densidad t-Student' },
             { name: 'transpose(matriz)', latex: '\\mathrm{transpose}\\left(#?\\right)', desc: 'Traspuesta de matriz' },
             { name: 'zeros(expr, var)', latex: '\\mathrm{zeros}\\left(#?, x\\right)', desc: 'Raíces de expresión' }
           ];
@@ -2386,8 +2837,12 @@
             row.className = 'menu-row';
             row.innerHTML = `<span><strong>${item.name}</strong></span><small>${item.desc}</small>`;
             row.addEventListener('click', () => {
-              closeModal();
-              insertLatex(item.latex);
+              if (item.distKey) {
+                openDistributionModal(item.distKey, () => openCatalogModal('CAT'));
+              } else {
+                closeModal();
+                insertLatex(item.latex);
+              }
             });
             list.appendChild(row);
           });
@@ -2467,16 +2922,7 @@
           { shortcut: '1', label: '1: Factorial (!)', latex: '!' },
           { shortcut: '2', label: '2: Permutations (nPr)', latex: '\\mathrm{nPr}\\left(#?, #?\\right)' },
           { shortcut: '3', label: '3: Combinations (nCr)', latex: '\\mathrm{nCr}\\left(#?, #?\\right)' },
-          { shortcut: '4', label: '4: Normal Pdf (normPdf)', latex: '\\mathrm{normPdf}\\left(#?, 0, 1\\right)' },
-          { shortcut: '5', label: '5: Normal Cdf (normCdf)', latex: '\\mathrm{normCdf}\\left(#?, #?, 0, 1\\right)' },
-          { shortcut: '6', label: '6: Inverse Normal (invNorm)', latex: '\\mathrm{invNorm}\\left(#?, 0, 1\\right)' },
-          { shortcut: '7', label: '7: Student-t Cdf (tCdf)', latex: '\\mathrm{tCdf}\\left(#?, #?, #?\\right)' },
-          { shortcut: '8', label: '8: Inverse Student-t (invT)', latex: '\\mathrm{invT}\\left(#?, #?\\right)' },
-          { shortcut: '9', label: '9: Chi-Square Cdf (χ²Cdf)', latex: '\\mathrm{chi2Cdf}\\left(#?, #?, #?\\right)' },
-          { shortcut: 'a', label: 'A: Binomial Pdf (binomPdf)', latex: '\\mathrm{binomPdf}\\left(#?, #?, #?\\right)' },
-          { shortcut: 'b', label: 'B: Binomial Cdf (binomCdf)', latex: '\\mathrm{binomCdf}\\left(#?, #?, #?, #?\\right)' },
-          { shortcut: 'c', label: 'C: Poisson Pdf (poissPdf)', latex: '\\mathrm{poissPdf}\\left(#?, #?\\right)' },
-          { shortcut: 'd', label: 'D: Poisson Cdf (poissCdf)', latex: '\\mathrm{poissCdf}\\left(#?, #?, #?\\right)' }
+          { shortcut: '4', label: '4: Distribuciones (Distributions)', hasSubmenu: true, keepModalOpen: true, action: () => openDistributionsSubmenu(() => openCategorySubmenu(4)) }
         ]
       },
       {
@@ -2536,7 +2982,12 @@
             const subRow = document.createElement('div');
             subRow.className = 'menu-row';
             if (item.shortcut) subRow.dataset.shortcut = item.shortcut;
-            subRow.textContent = item.label;
+            if (item.hasSubmenu) {
+              subRow.dataset.hasSubmenu = 'true';
+              subRow.innerHTML = `<span>${item.label}</span><span>▸</span>`;
+            } else {
+              subRow.textContent = item.label;
+            }
             subRow.addEventListener('click', () => {
               if (!item.keepModalOpen) closeModal();
               if (item.action) item.action();
@@ -3005,7 +3456,11 @@
 
         case 'center-click':
           if (modalNav.isOpen) {
-            activateFocusedModalItem();
+            if (typeof modalNav.onKeyAction === 'function') {
+              modalNav.onKeyAction('ENTER');
+            } else {
+              activateFocusedModalItem();
+            }
             return;
           }
           if (selectedHistoryIndex >= 0 && historyRecords[selectedHistoryIndex]) {
@@ -3029,7 +3484,11 @@
 
         case 'del':
           if (modalNav.isOpen) {
-            closeModal();
+            if (typeof modalNav.onKeyAction === 'function') {
+              modalNav.onKeyAction('BACKSPACE');
+            } else {
+              closeModal();
+            }
             return;
           }
           if (isCtrl) {
@@ -3056,11 +3515,19 @@
           return;
 
         case 'power':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('^');
+            return;
+          }
           if (isCtrl) insertLatex('\\sqrt[#?]{#?}');
           else insertLatex('^{#?}');
           return;
 
         case 'square':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('^2');
+            return;
+          }
           if (isCtrl) insertLatex('\\sqrt{#?}');
           else insertLatex('^{2}');
           return;
@@ -3076,6 +3543,10 @@
           return;
 
         case 'lparen':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('(');
+            return;
+          }
           if (isCtrl) insertLatex('\\left[#?\\right]');
           else {
             const prevPairs = countMatchedPairs(collectShadowParens().parens);
@@ -3085,6 +3556,10 @@
           return;
 
         case 'rparen':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction(')');
+            return;
+          }
           if (isCtrl) insertLatex('\\left\\{#?\\right\\}');
           else {
             const prevPairs = countMatchedPairs(collectShadowParens().parens);
@@ -3094,11 +3569,19 @@
           return;
 
         case 'dot':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('.');
+            return;
+          }
           if (isCtrl) insertLatex(lastCapturedLatex);
           else insertLatex('.');
           return;
 
         case 'neg':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('-');
+            return;
+          }
           if (isCtrl) insertLatex('\\mathrm{Ans}');
           else insertLatex('-');
           return;
@@ -3114,34 +3597,62 @@
           return;
 
         case 'mul':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('*');
+            return;
+          }
           if (isCtrl) showToast('Sin acción asignada');
           else insertLatex('\\cdot ');
           return;
 
         case 'div':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('/');
+            return;
+          }
           if (isCtrl) insertLatex('\\frac{#0}{#?}');
           else insertLatex('\\frac{#@}{#?}');
           return;
 
         case 'plus':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('+');
+            return;
+          }
           if (isCtrl) showToast('Sin acción asignada');
           else insertLatex('+');
           return;
 
         case 'minus':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('-');
+            return;
+          }
           if (isCtrl) showToast('Sin acción asignada');
           else insertLatex('-');
           return;
 
         case 'enter':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('ENTER');
+            return;
+          }
           evaluateCurrentInput(isCtrl);
           return;
 
         case 'ee':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('e');
+            return;
+          }
           insertLatex('\\cdot 10^{#?}');
           return;
 
         case 'pi':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('π');
+            return;
+          }
           if (isCtrl) insertLatex('\\pi ');
           else openPiPalette();
           return;
@@ -3155,6 +3666,10 @@
           return;
 
         case 'return':
+          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction('ENTER');
+            return;
+          }
           evaluateCurrentInput(false);
           return;
 
@@ -3195,6 +3710,10 @@
         setCtrl(false);
         const digit = el.dataset.digit;
         if (modalNav.isOpen) {
+          if (typeof modalNav.onKeyAction === 'function') {
+            modalNav.onKeyAction(digit);
+            return;
+          }
           if (typeof modalNav.onDigit === 'function') {
             modalNav.onDigit(Number(digit));
             return;
@@ -3217,6 +3736,12 @@
         setCtrl(false);
         const rawLetter = el.dataset.letter;
         if (modalNav.isOpen && modalNav.mode === 'list') {
+          if (typeof modalNav.onKeyAction === 'function') {
+            const ch = shiftMode !== 'OFF' ? rawLetter.toUpperCase() : rawLetter.toLowerCase();
+            if (shiftMode === 'ONCE') setShift('OFF');
+            modalNav.onKeyAction(ch);
+            return;
+          }
           const match = modalNav.items.find((it) => it.dataset.shortcut === rawLetter.toLowerCase());
           if (match) {
             match.click();
@@ -3232,11 +3757,36 @@
     // Soporte de teclado físico de computador (incluyendo navegación del menú, historial y plantillas 2D)
     window.addEventListener('keydown', (e) => {
       if (modalNav.isOpen) {
+        if (typeof modalNav.onKeyAction === 'function') {
+          if (e.key === 'Backspace') { e.preventDefault(); modalNav.onKeyAction('BACKSPACE'); return; }
+          if (e.key === 'Tab') { e.preventDefault(); moveModalFocus(e.shiftKey ? 'up' : 'down'); return; }
+          if (e.key === 'Enter') { e.preventDefault(); modalNav.onKeyAction('ENTER'); return; }
+          if (e.key === 'ArrowDown') { e.preventDefault(); moveModalFocus('down'); return; }
+          if (e.key === 'ArrowUp') { e.preventDefault(); moveModalFocus('up'); return; }
+          if (e.key === 'ArrowRight') { e.preventDefault(); moveModalFocus('right'); return; }
+          if (e.key === 'ArrowLeft') { e.preventDefault(); moveModalFocus('left'); return; }
+          if (e.key === 'Escape') { e.preventDefault(); handleHardwareKey('esc'); return; }
+          if (!e.ctrlKey && !e.metaKey && !e.altKey && /^[0-9a-zA-Z.,\-+*/^()]$/.test(e.key)) {
+            e.preventDefault();
+            modalNav.onKeyAction(e.key === ',' ? '.' : e.key);
+            return;
+          }
+          return;
+        }
         if (/^[1-9]$/.test(e.key) && typeof modalNav.onDigit === 'function') {
           e.preventDefault();
           modalNav.onDigit(Number(e.key));
           return;
         }
+        if (modalNav.mode === 'list' && !e.ctrlKey && !e.metaKey && !e.altKey && /^[1-9a-dA-D]$/.test(e.key)) {
+          const match = modalNav.items.find((it) => it.dataset.shortcut === e.key.toLowerCase());
+          if (match) {
+            e.preventDefault();
+            match.click();
+            return;
+          }
+        }
+        if (e.key === 'Tab') { e.preventDefault(); moveModalFocus(e.shiftKey ? 'up' : 'down'); return; }
         if (e.key === 'ArrowDown') { e.preventDefault(); moveModalFocus('down'); return; }
         if (e.key === 'ArrowUp') { e.preventDefault(); moveModalFocus('up'); return; }
         if (e.key === 'ArrowRight') { e.preventDefault(); moveModalFocus('right'); return; }
