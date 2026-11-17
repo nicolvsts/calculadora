@@ -477,6 +477,24 @@
       color: #ffffff;
     }
 
+    .menu-cat-left {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .menu-cat-icon {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      color: #0369a1;
+    }
+
+    .menu-row:hover .menu-cat-icon,
+    .menu-row.focused-item .menu-cat-icon {
+      color: #ffffff;
+    }
+
     .menu-row small {
       opacity: 0.75;
       font-family: monospace;
@@ -855,7 +873,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.30</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.31</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1366,7 +1384,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.30';
+    const APP_VERSION = 'v1.31';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -2891,7 +2909,8 @@
     const TI_CAS_MENU = [
       {
         shortcut: '1',
-        title: '1: Acciones (Actions)',
+        title: '1: Acciones',
+        iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M9.5 1.5L3.5 9h4.2l-1.2 5.5L12.5 7H8.3l1.2-5.5z"/></svg>',
         items: [
           { shortcut: '1', label: '1: Define', latex: '\\mathrm{Define}\\ f\\left(x\\right)=#?' },
           { shortcut: '2', label: '2: Delete Variable (DelVar)', latex: '\\mathrm{DelVar}\\ #?' },
@@ -2901,7 +2920,8 @@
       },
       {
         shortcut: '2',
-        title: '2: Número (Number)',
+        title: '2: Número',
+        iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="1.2" y="3" width="13.6" height="10" rx="2"/><text x="8" y="10.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">123</text></svg>',
         items: [
           { shortcut: '1', label: '1: Convert to Decimal (approx)', latex: '\\mathrm{approx}\\left(#?\\right)' },
           { shortcut: '2', label: '2: Approximate to Fraction (exact)', latex: '\\mathrm{exact}\\left(#?\\right)' },
@@ -2916,7 +2936,8 @@
       },
       {
         shortcut: '3',
-        title: '3: Álgebra (Algebra)',
+        title: '3: Álgebra',
+        iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><text x="1.5" y="11.5" font-size="10" font-weight="700" font-style="italic" font-family="KaTeX_Math, Times New Roman, Georgia, serif">x</text><rect x="7.8" y="5.6" width="6.5" height="1.5" rx="0.6"/><rect x="7.8" y="9" width="6.5" height="1.5" rx="0.6"/></svg>',
         items: [
           { shortcut: '1', label: '1: Solve', latex: '\\mathrm{solve}\\left(#?, #?\\right)' },
           { shortcut: '2', label: '2: Factor', latex: '\\mathrm{factor}\\left(#?\\right)' },
@@ -2932,7 +2953,8 @@
       },
       {
         shortcut: '4',
-        title: '4: Cálculo (Calculus)',
+        title: '4: Cálculo',
+        iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M11 2.8c-.4-.7-1.4-.9-2-.2-.5.6-.7 1.7-.9 4l-.4 3.1c-.2 2.1-.4 3-.9 3.6-.6.7-1.6.5-2-.2"/></svg>',
         items: [
           { shortcut: '1', label: '1: Derivative (Plantilla 2D d/dx)', latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)' },
           { shortcut: '2', label: '2: n-th Derivative (Plantilla 2D dⁿ/dxⁿ)', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
@@ -2948,7 +2970,8 @@
       },
       {
         shortcut: '5',
-        title: '5: Probabilidad (Probability)',
+        title: '5: Probabilidad',
+        iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2.3"/><circle cx="5.2" cy="5.2" r="1.05" fill="currentColor" stroke="none"/><circle cx="10.8" cy="5.2" r="1.05" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.05" fill="currentColor" stroke="none"/><circle cx="5.2" cy="10.8" r="1.05" fill="currentColor" stroke="none"/><circle cx="10.8" cy="10.8" r="1.05" fill="currentColor" stroke="none"/></svg>',
         items: [
           { shortcut: '1', label: '1: Factorial (!)', latex: '!' },
           { shortcut: '2', label: '2: Permutations (nPr)', latex: '\\mathrm{nPr}\\left(#?, #?\\right)' },
@@ -2958,7 +2981,8 @@
       },
       {
         shortcut: '6',
-        title: '6: Estadística (Statistics)',
+        title: '6: Estadística',
+        iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="2" y="12.5" width="12" height="1.4" rx="0.5"/><rect x="3" y="7.5" width="2.4" height="4.5" rx="0.5"/><rect x="6.8" y="3.2" width="2.4" height="8.8" rx="0.5"/><rect x="10.6" y="5.5" width="2.4" height="6.5" rx="0.5"/></svg>',
         items: [
           { shortcut: '1', label: '1: Mean (Media)', latex: '\\mathrm{mean}\\left(\\left[#?, #?\\right]\\right)' },
           { shortcut: '2', label: '2: Median (Mediana)', latex: '\\mathrm{median}\\left(\\left[#?, #?\\right]\\right)' },
@@ -2968,7 +2992,8 @@
       },
       {
         shortcut: '7',
-        title: '7: Matriz y Vector (Matrix & Vector)',
+        title: '7: Matriz y Vector',
+        iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 2.5H2.5v11h2M11.5 2.5h2v11h-2"/><circle cx="6" cy="5.7" r="1.05" fill="currentColor" stroke="none"/><circle cx="10" cy="5.7" r="1.05" fill="currentColor" stroke="none"/><circle cx="6" cy="10.3" r="1.05" fill="currentColor" stroke="none"/><circle cx="10" cy="10.3" r="1.05" fill="currentColor" stroke="none"/></svg>',
         items: [
           { shortcut: '1', label: '1: Matriz n×m', keepModalOpen: true, action: () => openCustomMatrixModal(() => openCategorySubmenu(6)) },
           { shortcut: '2', label: '2: Identity Matrix (identity)', latex: '\\mathrm{identity}\\left(3\\right)' },
@@ -2993,7 +3018,7 @@
           row.className = 'menu-row';
           row.dataset.hasSubmenu = 'true';
           row.dataset.shortcut = cat.shortcut;
-          row.innerHTML = `<span>${cat.title}</span><span>▸</span>`;
+          row.innerHTML = `<span class="menu-cat-left">${cat.iconSvg || ''}<span>${cat.title}</span></span><span>▸</span>`;
           row.addEventListener('click', () => openCategorySubmenu(catIdx));
           list.appendChild(row);
         });
