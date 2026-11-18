@@ -288,6 +288,11 @@
       padding: 0 !important;
     }
 
+    .history-input .boxpad,
+    .palette-cell .boxpad {
+      padding: 0 !important;
+    }
+
     .approx-chip {
       background: #e2e8f0;
       color: #0369a1;
@@ -880,7 +885,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.35</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.36</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1391,7 +1396,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.35';
+    const APP_VERSION = 'v1.36';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -1504,6 +1509,9 @@
           (cleanText === '▢' ||
             cleanText === '□' ||
             cleanText === '■' ||
+            cleanText === 'd▢' ||
+            cleanText === 'd□' ||
+            cleanText === 'd■' ||
             Boolean(contentEl.querySelector('.ML__placeholder')));
         if (hasCaretInside && !nestedActiveBox && !onlyPlaceholder) {
           boxEl.classList.add('active-integral-pill');
@@ -1511,6 +1519,16 @@
           boxEl.classList.remove('active-integral-pill');
         }
       });
+    }
+
+    function scheduleUpdateActiveIntegralPill() {
+      updateActiveIntegralPill();
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+          updateActiveIntegralPill();
+          requestAnimationFrame(updateActiveIntegralPill);
+        });
+      }
     }
 
     function focusEntryBar() {
@@ -1538,14 +1556,9 @@
       if (!mf.__moveOutBound) {
         mf.__moveOutBound = true;
         mf.addEventListener('move-out', (e) => e.preventDefault());
-        mf.addEventListener('selection-change', () => {
-          updateActiveIntegralPill();
-          requestAnimationFrame(updateActiveIntegralPill);
-        });
-        mf.addEventListener('input', () => {
-          updateActiveIntegralPill();
-          requestAnimationFrame(updateActiveIntegralPill);
-        });
+        mf.addEventListener('selection-change', scheduleUpdateActiveIntegralPill);
+        mf.addEventListener('input', scheduleUpdateActiveIntegralPill);
+        mf.addEventListener('focus', scheduleUpdateActiveIntegralPill);
       }
 
       if (mf.shadowRoot) {
@@ -1555,6 +1568,12 @@
             s.style.pointerEvents = 'auto';
           }
         });
+        if (!mf.__pillObserver && typeof MutationObserver !== 'undefined') {
+          mf.__pillObserver = new MutationObserver(() => {
+            updateActiveIntegralPill();
+          });
+          mf.__pillObserver.observe(mf.shadowRoot, { childList: true, subtree: true });
+        }
         if (!mf.shadowRoot.getElementById('ti-caret-override')) {
           const styleEl = document.createElement('style');
           styleEl.id = 'ti-caret-override';
@@ -1581,6 +1600,10 @@
             :host(.entry-active) .ML__text-caret::after,
             :host(.entry-active) .ML__latex-caret::after {
               visibility: visible !important;
+            }
+            span:has(> .ML__box) {
+              padding-left: 0.14em !important;
+              padding-right: 0.14em !important;
             }
             .ML__box {
               border: none !important;
@@ -1914,7 +1937,9 @@
             }
           }
         }
-        requestAnimationFrame(updateActiveIntegralPill);
+        if (typeof scheduleUpdateActiveIntegralPill === 'function') {
+          scheduleUpdateActiveIntegralPill();
+        }
       }
     }
 
@@ -2837,8 +2862,8 @@
           { label: 'd/dx', katexPreview: '\\frac{\\mathrm{d}}{\\mathrm{d}\\square}(\\square)', latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)' },
           { label: 'd²/dx²', katexPreview: '\\frac{\\mathrm{d}^2}{\\mathrm{d}\\square^2}(\\square)', latex: '\\frac{\\mathrm{d}^{2}}{\\mathrm{d}#?^{2}}\\left(#?\\right)' },
           { label: 'dⁿ/dxⁿ', katexPreview: '\\frac{\\mathrm{d}^{\\square}}{\\mathrm{d}\\square^{\\square}}(\\square)', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
-          { label: '∫ f dx', katexPreview: '\\int \\square\\,\\mathrm{d}\\square', latex: '\\int \\boxed{#?} \\, \\mathrm{d}\\boxed{#?}' },
-          { label: '∫ₐᵇ f dx', katexPreview: '\\int_{\\square}^{\\square} \\square\\,\\mathrm{d}\\square', latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\mathrm{d}\\boxed{#?}' },
+          { label: '∫ f dx', katexPreview: '\\int \\square\\,\\mathrm{d}\\square', latex: '\\int \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}' },
+          { label: '∫ₐᵇ f dx', katexPreview: '\\int_{\\square}^{\\square} \\square\\,\\mathrm{d}\\square', latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}' },
           { label: '∑ sum', katexPreview: '\\sum_{\\square=\\square}^{\\square}(\\square)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
           { label: '∏ prod', katexPreview: '\\prod_{\\square=\\square}^{\\square}(\\square)', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
           { label: 'lim', katexPreview: '\\lim_{\\square\\to\\square}(\\square)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
@@ -2935,7 +2960,7 @@
             { name: 'identity(n)', latex: '\\mathrm{identity}\\left(#?\\right)', desc: 'Matriz identidad n×n' },
             { name: 'ifactor(n)', latex: '\\mathrm{ifactor}\\left(#?\\right)', desc: 'Factores primos de entero' },
             { name: 'impDiff(eq, x, y)', latex: '\\mathrm{impDiff}\\left(#?=#?, x, y\\right)', desc: 'Derivación implícita' },
-            { name: 'integrate (Integral 2D)', latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\mathrm{d}\\boxed{#?}', desc: 'Integral definida 2D' },
+            { name: 'integrate (Integral 2D)', latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}', desc: 'Integral definida 2D' },
             { name: 'invNorm(area, μ, σ)', distKey: 'invNorm', latex: '\\mathrm{invNorm}\\left(#?, 0, 1\\right)', desc: 'Inversa Normal' },
             { name: 'invT(area, df)', distKey: 'invT', latex: '\\mathrm{invT}\\left(#?, #?\\right)', desc: 'Inversa t-Student' },
             { name: 'lcm(a, b)', latex: '\\mathrm{lcm}\\left(#?, #?\\right)', desc: 'Mínimo común múltiplo' },
@@ -3037,8 +3062,8 @@
         items: [
           { shortcut: '1', label: '1: Derivative (Plantilla 2D d/dx)', latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)' },
           { shortcut: '2', label: '2: n-th Derivative (Plantilla 2D dⁿ/dxⁿ)', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
-          { shortcut: '3', label: '3: Indefinite Integral (Plantilla 2D ∫)', latex: '\\int \\boxed{#?} \\, \\mathrm{d}\\boxed{#?}' },
-          { shortcut: '4', label: '4: Definite Integral (Plantilla 2D ∫ₐᵇ)', latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\mathrm{d}\\boxed{#?}' },
+          { shortcut: '3', label: '3: Indefinite Integral (Plantilla 2D ∫)', latex: '\\int \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}' },
+          { shortcut: '4', label: '4: Definite Integral (Plantilla 2D ∫ₐᵇ)', latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}' },
           { shortcut: '5', label: '5: Limit (Plantilla 2D lim)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
           { shortcut: '6', label: '6: Sum (Plantilla 2D ∑)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
           { shortcut: '7', label: '7: Product (Plantilla 2D ∏)', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
@@ -3227,11 +3252,19 @@
     // NAVEGACIÓN PERSONALIZADA CON FLECHAS Y TAB EN INTEGRALES DEFINIDAS
     // (\int_{inf}^{sup} integrando \, \mathrm{d}var)
     // =========================================================
+    function isDiffSymbolAtom(atom) {
+      return Boolean(
+        atom && (atom.value === 'd' || atom.command === '\\mathrm{d}' || atom.command === '\\differentialD')
+      );
+    }
+
     function setModelCursor(model, offset) {
       model.setPositionHandlingPlaceholder(offset);
       mf.selection = model.selection;
       focusEntryBar();
-      if (typeof requestAnimationFrame === 'function' && typeof updateActiveIntegralPill === 'function') {
+      if (typeof scheduleUpdateActiveIntegralPill === 'function') {
+        scheduleUpdateActiveIntegralPill();
+      } else if (typeof requestAnimationFrame === 'function' && typeof updateActiveIntegralPill === 'function') {
         requestAnimationFrame(updateActiveIntegralPill);
       }
     }
@@ -3243,7 +3276,10 @@
         setModelCursor(model, model.offsetOf(ph));
         return true;
       }
-      const target = edge === 'start' ? branch[0] : branch[branch.length - 1];
+      const target =
+        edge === 'start'
+          ? (branch.length > 1 && isDiffSymbolAtom(branch[1]) ? branch[1] : branch[0])
+          : branch[branch.length - 1];
       setModelCursor(model, model.offsetOf(target));
       return true;
     }
@@ -3262,23 +3298,25 @@
       let diffBox = null;
       if (!intAtom) return { integrandBox, diffBox };
       let check = intAtom.rightSibling;
-      let dAtom = null;
       while (check) {
-        if (check.value === 'd' || check.command === '\\mathrm{d}' || check.command === '\\differentialD') {
-          dAtom = check;
+        if (check.type === 'box') {
+          if (!integrandBox) {
+            integrandBox = check;
+          } else if (!diffBox) {
+            diffBox = check;
+            break;
+          }
+        } else if (isDiffSymbolAtom(check)) {
+          let afterD = check.rightSibling;
+          while (afterD && afterD.type === 'spacing') afterD = afterD.rightSibling;
+          if (afterD && afterD.type === 'box') {
+            diffBox = afterD;
+          }
+          break;
+        } else if (integrandBox && check.type !== 'spacing') {
           break;
         }
-        if (check.type === 'box' && !integrandBox) {
-          integrandBox = check;
-        }
         check = check.rightSibling;
-      }
-      if (dAtom) {
-        let afterD = dAtom.rightSibling;
-        while (afterD && afterD.type === 'spacing') afterD = afterD.rightSibling;
-        if (afterD && afterD.type === 'box') {
-          diffBox = afterD;
-        }
       }
       return { integrandBox, diffBox };
     }
@@ -3333,13 +3371,13 @@
               let passedD = false;
               let check = foundInt.rightSibling;
               while (check && check !== n) {
-                if (check.value === 'd' || check.command === '\\mathrm{d}' || check.command === '\\differentialD') {
+                if (isDiffSymbolAtom(check)) {
                   passedD = true;
                   break;
                 }
                 check = check.rightSibling;
               }
-              if (!passedD && n.value !== 'd' && n.command !== '\\mathrm{d}' && n.command !== '\\differentialD') {
+              if (!passedD && !isDiffSymbolAtom(n)) {
                 return { intAtom: foundInt, integrandBox: null, diffBox: null, inSubscript: false, inSuperscript: false, isIntegrand: true, inDiff: false };
               }
             } else if (n === foundInt) {
@@ -3645,7 +3683,7 @@
       const curAtom = model.at(model.position);
       if (!curAtom) return false;
 
-      const { intAtom, integrandBox, inSubscript, inSuperscript, isIntegrand } = findIntegralContext(curAtom, model);
+      const { intAtom, integrandBox, diffBox, inSubscript, inSuperscript, isIntegrand, inDiff } = findIntegralContext(curAtom, model);
       if (!intAtom) return false;
 
       // Caso A: El cursor está en el LÍMITE INFERIOR (subscript)
@@ -3724,7 +3762,7 @@
         return false;
       }
 
-      // Caso C: El cursor está al inicio del INTEGRANDO y pulsa Flecha Izquierda (◀)
+      // Caso C: El cursor está al inicio o final del INTEGRANDO
       if (dir === 'left') {
         const atIntegrandBoxStart =
           integrandBox &&
@@ -3736,6 +3774,72 @@
         if (model.selectionIsCollapsed && curAtom === intAtom && intAtom.superscript) {
           return focusIntegralBranch(model, intAtom.superscript, 'end');
         }
+      }
+      if (dir === 'right' && isIntegrand && integrandBox && Array.isArray(integrandBox.body) && diffBox && Array.isArray(diffBox.body)) {
+        const atIntegrandRightEdge =
+          (model.selectionIsPlaceholder && integrandBox.body.includes(curAtom)) ||
+          (model.selectionIsCollapsed && curAtom === integrandBox.body[integrandBox.body.length - 1]);
+        if (atIntegrandRightEdge) {
+          return focusIntegralBranch(model, diffBox.body, 'start');
+        }
+      }
+
+      // Caso D: El cursor está en el inicio del DIFERENCIAL y pulsa Flecha Izquierda (◀)
+      if (dir === 'left' && inDiff && diffBox && Array.isArray(diffBox.body) && integrandBox && Array.isArray(integrandBox.body)) {
+        const dAtom = diffBox.body.find((a) => isDiffSymbolAtom(a));
+        const atDiffStart =
+          (model.selectionIsPlaceholder && diffBox.body.includes(curAtom)) ||
+          curAtom === diffBox.body[0] ||
+          (model.selectionIsCollapsed && dAtom && curAtom === dAtom);
+        if (atDiffStart) {
+          return focusIntegralBranch(model, integrandBox.body, 'end');
+        }
+      }
+
+      return false;
+    }
+
+    function tryIntegralBackspaceGuard() {
+      if (modalNav.isOpen || selectedHistoryIndex !== -1) return false;
+      const model = mf && mf._mathfield && mf._mathfield.model;
+      if (!model) return false;
+      const curAtom = model.at(model.position);
+      if (!curAtom) return false;
+
+      const { intAtom, integrandBox, diffBox, inDiff } = findIntegralContext(curAtom, model);
+      if (!intAtom || !diffBox || !Array.isArray(diffBox.body)) return false;
+
+      const dAtom = diffBox.body.find((a) => isDiffSymbolAtom(a));
+      if (!dAtom) return false;
+
+      if (inDiff) {
+        if (
+          model.selectionIsPlaceholder ||
+          curAtom === diffBox.body[0] ||
+          (model.selectionIsCollapsed && curAtom === dAtom)
+        ) {
+          if (!dAtom.rightSibling && typeof mf.insert === 'function') {
+            mf.insert('#?', { format: 'latex', selectionMode: 'placeholder' });
+            if (typeof scheduleUpdateActiveIntegralPill === 'function') {
+              scheduleUpdateActiveIntegralPill();
+            }
+          } else if (model.selectionIsPlaceholder && integrandBox && Array.isArray(integrandBox.body)) {
+            focusIntegralBranch(model, integrandBox.body, 'end');
+          }
+          return true;
+        }
+        return false;
+      }
+
+      // Si el cursor está justo a la derecha de diffBox (fuera de la integral), entrar al final de diffBox en lugar de borrar todo el bloque
+      if (model.selectionIsCollapsed && curAtom === diffBox) {
+        const lastDiffAtom = diffBox.body[diffBox.body.length - 1];
+        if (lastDiffAtom && lastDiffAtom !== dAtom) {
+          setModelCursor(model, model.offsetOf(lastDiffAtom));
+        } else {
+          focusIntegralBranch(model, diffBox.body, 'end');
+        }
+        return true;
       }
 
       return false;
@@ -3934,7 +4038,7 @@
           } else {
             pushUndoState();
             focusEntryBar();
-            if (typeof mf.executeCommand === 'function') {
+            if (!tryIntegralBackspaceGuard() && typeof mf.executeCommand === 'function') {
               mf.executeCommand('deleteBackward');
             }
           }
@@ -4244,6 +4348,11 @@
         }
       } else if (e.key === 'ArrowRight' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
         if (tryIntegralArrowNav('right')) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      } else if (e.key === 'Backspace' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        if (tryIntegralBackspaceGuard()) {
           e.preventDefault();
           e.stopPropagation();
         }

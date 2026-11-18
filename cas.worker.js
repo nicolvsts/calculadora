@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.35';
+const WORKER_VERSION = 'v1.36';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -261,6 +261,9 @@ function latexToGiac(rawLatex) {
 
   // Integrales con límites apilados (\overset / \underset) -> \int_{a}^{b}
   s = normalizeStackedIntegrals(s);
+
+  // Normalizar \boxed{\mathrm{d}...} a \mathrm{d}\boxed{...} para el parser de integrales
+  s = s.replace(/\\boxed\s*\{\s*(?:\\mathrm\{\s*d\s*\}|\\differentialD)\s*/g, '\\mathrm{d}\\boxed{');
 
   // Limpiar comandos de estilo de MathLive (\mathrm, \text, \operatorname, \left, \right, \, \: \; \!)
   const unwrapCommands = ['\\mathrm', '\\text', '\\operatorname', '\\mathbf', '\\mathit'];
