@@ -873,7 +873,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.32</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.33</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1384,7 +1384,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.32';
+    const APP_VERSION = 'v1.33';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -1483,6 +1483,10 @@
       mf.smartFence = false;
       mf.smartSuperscript = false;
       mf.setAttribute('contenteditable', 'true');
+      if (!mf.__moveOutBound) {
+        mf.__moveOutBound = true;
+        mf.addEventListener('move-out', (e) => e.preventDefault());
+      }
 
       if (mf.shadowRoot) {
         // Restaurar pointer-events en caso de que MathLive lo haya desactivado y asegurar visibilidad del cursor
@@ -1825,14 +1829,17 @@
           selectionMode: 'placeholder',
           smartFence: false
         });
-        // Si acabamos de insertar una integral definida, enfocar el límite inferior
-        if (latexSnippet.includes('\\int_{') && latexSnippet.includes('^{')) {
+        // Si acabamos de insertar una integral definida, sumatoria o productoria, enfocar el límite inferior
+        if ((latexSnippet.includes('\\int_{') || latexSnippet.includes('\\sum_{') || latexSnippet.includes('\\prod_{')) && latexSnippet.includes('^{')) {
           const model = mf._mathfield?.model;
           if (model) {
-            const curAtom = model.at(model.position);
-            const { intAtom } = findIntegralContext(curAtom, model);
-            if (intAtom && intAtom.subscript) {
-              focusIntegralBranch(model, intAtom.subscript, 'end');
+            let node = model.at(model.position);
+            while (node) {
+              if (node.parent && ['\\int', '\\sum', '\\prod'].includes(node.parent.command) && node.parent.subscript) {
+                focusIntegralBranch(model, node.parent.subscript, 'end');
+                break;
+              }
+              node = node.parent;
             }
           }
         }
@@ -3263,6 +3270,176 @@
       return false;
     }
 
+    function collectSubtreePlaceholders(atomsList, out = []) {
+      if (!Array.isArray(atomsList)) return out;
+      for (const atom of atomsList) {
+        if (!atom || atom.type === 'first') continue;
+        if (atom.type === 'placeholder') {
+          out.push(atom);
+        }
+        if (Array.isArray(atom.subscript)) collectSubtreePlaceholders(atom.subscript, out);
+        if (Array.isArray(atom.superscript)) collectSubtreePlaceholders(atom.superscript, out);
+        if (Array.isArray(atom.below)) collectSubtreePlaceholders(atom.below, out);
+        if (Array.isArray(atom.above)) collectSubtreePlaceholders(atom.above, out);
+        if (Array.isArray(atom.body)) collectSubtreePlaceholders(atom.body, out);
+        if (Array.isArray(atom.array)) {
+          for (const row of atom.array) {
+            if (!Array.isArray(row)) continue;
+            for (const cell of row) {
+              collectSubtreePlaceholders(cell, out);
+            }
+          }
+        }
+      }
+      return out;
+    }
+
+    function findAdjacentPlaceholder(model, atomsList, forward = true) {
+      const phs = collectSubtreePlaceholders(atomsList);
+      if (phs.length === 0) return null;
+      const maxPos = Math.max(model.anchor, model.position);
+      const minPos = Math.min(model.anchor, model.position);
+      const currentSelPh = model.selectionIsPlaceholder ? model.at(maxPos) : null;
+      if (forward) {
+        return phs.find((ph) => model.offsetOf(ph) > maxPos) || null;
+      }
+      const bound = currentSelPh ? maxPos : minPos;
+      for (let i = phs.length - 1; i >= 0; i--) {
+        const ph = phs[i];
+        if (ph !== currentSelPh && model.offsetOf(ph) < bound) return ph;
+      }
+      return null;
+    }
+
+    function getBranchAtoms(parent, branchName) {
+      if (!parent) return null;
+      if (Array.isArray(branchName) && parent.type === 'array' && typeof parent.getCell === 'function') {
+        return parent.getCell(branchName[0], branchName[1]);
+      }
+      if (typeof branchName === 'string' && Array.isArray(parent[branchName])) {
+        return parent[branchName];
+      }
+      return null;
+    }
+
+    function handleMathTabNav(forward = true) {
+      if (modalNav.isOpen || selectedHistoryIndex !== -1) return false;
+      focusEntryBar();
+
+      if (tryIntegralTabNav(forward)) return true;
+
+      const model = mf && mf._mathfield && mf._mathfield.model;
+      if (!model) return false;
+
+      const curOffset = model.position;
+      const curAtom = model.at(curOffset);
+      if (!curAtom) return false;
+
+      const parent = curAtom.parent;
+      const branchName = curAtom.parentBranch;
+
+      if (parent && parent !== model.root) {
+        // Caso Matriz ('array'): recorrer celda por celda o salir tras la última celda
+        if (parent.type === 'array' && Array.isArray(branchName)) {
+          const [r, c] = branchName;
+          const curCell = parent.getCell(r, c);
+          const nextCellPh = findAdjacentPlaceholder(model, curCell, forward);
+          if (nextCellPh) {
+            setModelCursor(model, model.offsetOf(nextCellPh));
+            return true;
+          }
+          const rows = parent.rowCount || (parent.array ? parent.array.length : 0);
+          const cols = parent.colCount || (parent.array && parent.array[r] ? parent.array[r].length : 0);
+          if (forward) {
+            if (c + 1 < cols) {
+              return focusIntegralBranch(model, parent.getCell(r, c + 1), 'end');
+            }
+            if (r + 1 < rows) {
+              return focusIntegralBranch(model, parent.getCell(r + 1, 0), 'end');
+            }
+            setModelCursor(model, model.offsetOf(parent));
+            return true;
+          } else {
+            if (c - 1 >= 0) {
+              return focusIntegralBranch(model, parent.getCell(r, c - 1), 'end');
+            }
+            if (r - 1 >= 0) {
+              const prevRowCols = (parent.array && parent.array[r - 1] ? parent.array[r - 1].length : cols);
+              return focusIntegralBranch(model, parent.getCell(r - 1, prevRowCols - 1), 'end');
+            }
+            const beforeOffset = parent.leftSibling ? model.offsetOf(parent.leftSibling) : 0;
+            setModelCursor(model, Math.max(0, beforeOffset));
+            return true;
+          }
+        }
+
+        // Caso Contenedor General (leftright, surd, genfrac, subscript, superscript, etc.)
+        const curBranch = getBranchAtoms(parent, branchName);
+        if (curBranch) {
+          const sameBranchPh = findAdjacentPlaceholder(model, curBranch, forward);
+          if (sameBranchPh) {
+            setModelCursor(model, model.offsetOf(sameBranchPh));
+            return true;
+          }
+        }
+
+        if (forward) {
+          if (parent.type === 'genfrac' && branchName === 'above' && parent.below) {
+            return focusIntegralBranch(model, parent.below, 'end');
+          }
+          if (parent.type === 'surd' && branchName === 'above' && parent.body) {
+            return focusIntegralBranch(model, parent.body, 'end');
+          }
+          if ((branchName === 'subscript' || branchName === 'below') && parent.superscript) {
+            return focusIntegralBranch(model, parent.superscript, 'end');
+          }
+
+          // Al salir de subíndice/superíndice o denominador de derivada (\log_b(#?), \lim(#?), \sum(#?), \prod(#?), d/dx(#?)),
+          // verificar si el hermano derecho inmediato contiene algún placeholder editable
+          if (branchName === 'subscript' || branchName === 'superscript' || branchName === 'below' || (parent.type === 'genfrac' && branchName === 'below')) {
+            let sib = parent.rightSibling;
+            while (sib && sib.type === 'spacing') sib = sib.rightSibling;
+            if (sib) {
+              const sibPhs = collectSubtreePlaceholders([sib]);
+              if (sibPhs.length > 0) {
+                setModelCursor(model, model.offsetOf(sibPhs[0]));
+                return true;
+              }
+            }
+          }
+
+          setModelCursor(model, model.offsetOf(parent));
+          return true;
+        } else {
+          if (parent.type === 'genfrac' && branchName === 'below' && parent.above) {
+            return focusIntegralBranch(model, parent.above, 'end');
+          }
+          if (parent.type === 'surd' && branchName === 'body' && parent.above) {
+            return focusIntegralBranch(model, parent.above, 'end');
+          }
+          if (branchName === 'superscript' && parent.subscript) {
+            return focusIntegralBranch(model, parent.subscript, 'end');
+          }
+          const beforeOffset = parent.leftSibling ? model.offsetOf(parent.leftSibling) : 0;
+          setModelCursor(model, Math.max(0, beforeOffset));
+          return true;
+        }
+      }
+
+      // Nivel raíz (model.root): buscar siguiente/anterior placeholder o conservar el cursor dentro de la entrada
+      const rootPh = findAdjacentPlaceholder(model, model.root?.body, forward);
+      if (rootPh) {
+        setModelCursor(model, model.offsetOf(rootPh));
+        return true;
+      }
+      if (forward && curOffset < model.lastOffset) {
+        setModelCursor(model, model.lastOffset);
+      } else {
+        focusEntryBar();
+      }
+      return true;
+    }
+
     function tryIntegralArrowNav(dir) {
       if (modalNav.isOpen || selectedHistoryIndex !== -1) return false;
       const model = mf && mf._mathfield && mf._mathfield.model;
@@ -3415,11 +3592,7 @@
             moveModalFocus(isCtrl ? 'up' : 'down');
             return;
           }
-          if (tryIntegralTabNav(!isCtrl)) return;
-          focusEntryBar();
-          if (typeof mf.executeCommand === 'function') {
-            mf.executeCommand(isCtrl ? 'moveToPreviousPlaceholder' : 'moveToNextPlaceholder');
-          }
+          handleMathTabNav(!isCtrl);
           return;
 
         case 'up': {
@@ -3868,11 +4041,10 @@
           e.stopPropagation();
         }
       } else if (e.key === 'Tab') {
-        if (tryIntegralTabNav(!e.shiftKey)) {
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
+        e.preventDefault();
+        e.stopPropagation();
+        handleMathTabNav(!e.shiftKey);
+        return;
       }
     }, true);
 
