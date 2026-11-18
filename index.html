@@ -281,6 +281,18 @@
       padding: 2px 0;
     }
 
+    .history-input .fbox,
+    .palette-cell .fbox {
+      border: 1px dashed #64748b !important;
+      border-radius: 3px;
+      padding: 1px 3px !important;
+    }
+
+    .palette-cell:hover .fbox,
+    .palette-cell.focused-item .fbox {
+      border-color: #ffffff !important;
+    }
+
     .approx-chip {
       background: #e2e8f0;
       color: #0369a1;
@@ -873,7 +885,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.33</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.34</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1384,7 +1396,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.33';
+    const APP_VERSION = 'v1.34';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -1521,6 +1533,10 @@
             :host(.entry-active) .ML__text-caret::after,
             :host(.entry-active) .ML__latex-caret::after {
               visibility: visible !important;
+            }
+            .ML__box {
+              border: 1.2px dashed #64748b !important;
+              border-radius: 3px !important;
             }
           `;
           mf.shadowRoot.appendChild(styleEl);
@@ -2765,8 +2781,8 @@
           { label: 'd/dx', katexPreview: '\\frac{\\mathrm{d}}{\\mathrm{d}\\square}(\\square)', latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)' },
           { label: 'd²/dx²', katexPreview: '\\frac{\\mathrm{d}^2}{\\mathrm{d}\\square^2}(\\square)', latex: '\\frac{\\mathrm{d}^{2}}{\\mathrm{d}#?^{2}}\\left(#?\\right)' },
           { label: 'dⁿ/dxⁿ', katexPreview: '\\frac{\\mathrm{d}^{\\square}}{\\mathrm{d}\\square^{\\square}}(\\square)', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
-          { label: '∫ f dx', katexPreview: '\\int \\square\\,\\mathrm{d}\\square', latex: '\\int #? \\, \\mathrm{d}#?' },
-          { label: '∫ₐᵇ f dx', katexPreview: '\\int_{\\square}^{\\square} \\square\\,\\mathrm{d}\\square', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?' },
+          { label: '∫ f dx', katexPreview: '\\int \\boxed{\\square}\\,\\mathrm{d}\\boxed{\\square}', latex: '\\int \\boxed{#?} \\, \\mathrm{d}\\boxed{#?}' },
+          { label: '∫ₐᵇ f dx', katexPreview: '\\int_{\\square}^{\\square} \\boxed{\\square}\\,\\mathrm{d}\\boxed{\\square}', latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\mathrm{d}\\boxed{#?}' },
           { label: '∑ sum', katexPreview: '\\sum_{\\square=\\square}^{\\square}(\\square)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
           { label: '∏ prod', katexPreview: '\\prod_{\\square=\\square}^{\\square}(\\square)', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
           { label: 'lim', katexPreview: '\\lim_{\\square\\to\\square}(\\square)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
@@ -2863,7 +2879,7 @@
             { name: 'identity(n)', latex: '\\mathrm{identity}\\left(#?\\right)', desc: 'Matriz identidad n×n' },
             { name: 'ifactor(n)', latex: '\\mathrm{ifactor}\\left(#?\\right)', desc: 'Factores primos de entero' },
             { name: 'impDiff(eq, x, y)', latex: '\\mathrm{impDiff}\\left(#?=#?, x, y\\right)', desc: 'Derivación implícita' },
-            { name: 'integrate (Integral 2D)', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?', desc: 'Integral definida 2D' },
+            { name: 'integrate (Integral 2D)', latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\mathrm{d}\\boxed{#?}', desc: 'Integral definida 2D' },
             { name: 'invNorm(area, μ, σ)', distKey: 'invNorm', latex: '\\mathrm{invNorm}\\left(#?, 0, 1\\right)', desc: 'Inversa Normal' },
             { name: 'invT(area, df)', distKey: 'invT', latex: '\\mathrm{invT}\\left(#?, #?\\right)', desc: 'Inversa t-Student' },
             { name: 'lcm(a, b)', latex: '\\mathrm{lcm}\\left(#?, #?\\right)', desc: 'Mínimo común múltiplo' },
@@ -2965,8 +2981,8 @@
         items: [
           { shortcut: '1', label: '1: Derivative (Plantilla 2D d/dx)', latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)' },
           { shortcut: '2', label: '2: n-th Derivative (Plantilla 2D dⁿ/dxⁿ)', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
-          { shortcut: '3', label: '3: Indefinite Integral (Plantilla 2D ∫)', latex: '\\int #? \\, \\mathrm{d}#?' },
-          { shortcut: '4', label: '4: Definite Integral (Plantilla 2D ∫ₐᵇ)', latex: '\\int_{#?}^{#?} #? \\, \\mathrm{d}#?' },
+          { shortcut: '3', label: '3: Indefinite Integral (Plantilla 2D ∫)', latex: '\\int \\boxed{#?} \\, \\mathrm{d}\\boxed{#?}' },
+          { shortcut: '4', label: '4: Definite Integral (Plantilla 2D ∫ₐᵇ)', latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\mathrm{d}\\boxed{#?}' },
           { shortcut: '5', label: '5: Limit (Plantilla 2D lim)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
           { shortcut: '6', label: '6: Sum (Plantilla 2D ∑)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
           { shortcut: '7', label: '7: Product (Plantilla 2D ∏)', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
@@ -3173,8 +3189,45 @@
       return true;
     }
 
+    function isAtomInside(atom, containerAtom) {
+      let n = atom ? atom.parent : null;
+      while (n) {
+        if (n === containerAtom) return true;
+        n = n.parent;
+      }
+      return false;
+    }
+
+    function locateIntegralBoxes(intAtom) {
+      let integrandBox = null;
+      let diffBox = null;
+      if (!intAtom) return { integrandBox, diffBox };
+      let check = intAtom.rightSibling;
+      let dAtom = null;
+      while (check) {
+        if (check.value === 'd' || check.command === '\\mathrm{d}' || check.command === '\\differentialD') {
+          dAtom = check;
+          break;
+        }
+        if (check.type === 'box' && !integrandBox) {
+          integrandBox = check;
+        }
+        check = check.rightSibling;
+      }
+      if (dAtom) {
+        let afterD = dAtom.rightSibling;
+        while (afterD && afterD.type === 'spacing') afterD = afterD.rightSibling;
+        if (afterD && afterD.type === 'box') {
+          diffBox = afterD;
+        }
+      }
+      return { integrandBox, diffBox };
+    }
+
     function findIntegralContext(curAtom, model) {
-      if (!curAtom) return { intAtom: null, inSubscript: false, inSuperscript: false, isIntegrand: false };
+      if (!curAtom) {
+        return { intAtom: null, integrandBox: null, diffBox: null, inSubscript: false, inSuperscript: false, isIntegrand: false, inDiff: false };
+      }
       let node = curAtom;
       let inSubscript = false;
       let inSuperscript = false;
@@ -3191,40 +3244,55 @@
         node = node.parent;
       }
 
-      // 2. Verificar si estamos en el integrando a la derecha de \int
-      let isIntegrand = false;
-      if (!intAtom && model) {
+      if (intAtom) {
+        const { integrandBox, diffBox } = locateIntegralBoxes(intAtom);
+        return { intAtom, integrandBox, diffBox, inSubscript, inSuperscript, isIntegrand: false, inDiff: false };
+      }
+
+      // 2. Buscar en cualquier nivel contenedor si estamos dentro del integrando o del diferencial de un \int
+      if (model) {
         let n = curAtom;
-        while (n && n.parent && n.parent !== model.root && n.parent.command !== '\\int') {
-          n = n.parent;
-        }
-        let sib = n;
-        let foundInt = null;
-        while (sib) {
-          if (sib.command === '\\int') {
-            foundInt = sib;
-            break;
-          }
-          sib = sib.leftSibling;
-        }
-        if (foundInt) {
-          let passedD = false;
-          let check = foundInt.rightSibling;
-          while (check && check !== n) {
-            if (check.value === 'd' || check.command === '\\mathrm{d}') {
-              passedD = true;
+        while (n) {
+          let sib = n.leftSibling;
+          let foundInt = null;
+          while (sib) {
+            if (sib.command === '\\int') {
+              foundInt = sib;
               break;
             }
-            check = check.rightSibling;
+            sib = sib.leftSibling;
           }
-          if (!passedD && n.value !== 'd' && n.command !== '\\mathrm{d}') {
-            intAtom = foundInt;
-            isIntegrand = true;
+          if (foundInt) {
+            const { integrandBox, diffBox } = locateIntegralBoxes(foundInt);
+            if (diffBox && (isAtomInside(curAtom, diffBox) || (diffBox === n && curAtom !== diffBox))) {
+              return { intAtom: foundInt, integrandBox, diffBox, inSubscript: false, inSuperscript: false, isIntegrand: false, inDiff: true };
+            }
+            if (integrandBox && (isAtomInside(curAtom, integrandBox) || (integrandBox === n && curAtom !== integrandBox))) {
+              return { intAtom: foundInt, integrandBox, diffBox, inSubscript: false, inSuperscript: false, isIntegrand: true, inDiff: false };
+            }
+            if (!integrandBox && !diffBox) {
+              let passedD = false;
+              let check = foundInt.rightSibling;
+              while (check && check !== n) {
+                if (check.value === 'd' || check.command === '\\mathrm{d}' || check.command === '\\differentialD') {
+                  passedD = true;
+                  break;
+                }
+                check = check.rightSibling;
+              }
+              if (!passedD && n.value !== 'd' && n.command !== '\\mathrm{d}' && n.command !== '\\differentialD') {
+                return { intAtom: foundInt, integrandBox: null, diffBox: null, inSubscript: false, inSuperscript: false, isIntegrand: true, inDiff: false };
+              }
+            } else if (n === foundInt) {
+              return { intAtom: foundInt, integrandBox, diffBox, inSubscript: false, inSuperscript: false, isIntegrand: true, inDiff: false };
+            }
           }
+          if (n.parent === model.root) break;
+          n = n.parent;
         }
       }
 
-      return { intAtom, inSubscript, inSuperscript, isIntegrand };
+      return { intAtom: null, integrandBox: null, diffBox: null, inSubscript: false, inSuperscript: false, isIntegrand: false, inDiff: false };
     }
 
     function tryIntegralTabNav(forward = true) {
@@ -3235,16 +3303,31 @@
       const curAtom = model.at(model.position);
       if (!curAtom) return false;
 
-      const { intAtom, inSubscript, inSuperscript, isIntegrand } = findIntegralContext(curAtom, model);
+      const { intAtom, integrandBox, diffBox, inSubscript, inSuperscript, isIntegrand, inDiff } = findIntegralContext(curAtom, model);
       if (!intAtom) return false;
 
       if (forward) {
-        // Desde límite inferior (subscript) -> saltar a límite superior (superscript)
-        if (inSubscript && intAtom.superscript) {
-          return focusIntegralBranch(model, intAtom.superscript, 'end');
+        // 1. Desde límite inferior (subscript) -> siguiente placeholder o límite superior
+        if (inSubscript) {
+          const nextSubPh = findAdjacentPlaceholder(model, intAtom.subscript, true);
+          if (nextSubPh) {
+            setModelCursor(model, model.offsetOf(nextSubPh));
+            return true;
+          }
+          if (intAtom.superscript) {
+            return focusIntegralBranch(model, intAtom.superscript, 'end');
+          }
         }
-        // Desde límite superior (superscript) -> saltar al integrando
+        // 2. Desde límite superior (superscript) -> siguiente placeholder o recuadro del integrando
         if (inSuperscript) {
+          const nextSupPh = findAdjacentPlaceholder(model, intAtom.superscript, true);
+          if (nextSupPh) {
+            setModelCursor(model, model.offsetOf(nextSupPh));
+            return true;
+          }
+          if (integrandBox && Array.isArray(integrandBox.body)) {
+            return focusIntegralBranch(model, integrandBox.body, 'end');
+          }
           const integrandAtom = intAtom.rightSibling;
           if (integrandAtom) {
             if (integrandAtom.type === 'placeholder') {
@@ -3255,14 +3338,69 @@
             return true;
           }
         }
-      } else {
-        // En reversa (Shift+Tab):
-        // Desde el integrando -> volver al límite superior (superscript)
-        if (isIntegrand && intAtom.superscript) {
-          return focusIntegralBranch(model, intAtom.superscript, 'end');
+        // 3. Desde recuadro del integrando -> saltar al recuadro del diferencial \mathrm{d}[...]
+        if (isIntegrand && integrandBox && Array.isArray(integrandBox.body)) {
+          const nextIntPh = findAdjacentPlaceholder(model, integrandBox.body, true);
+          if (nextIntPh) {
+            setModelCursor(model, model.offsetOf(nextIntPh));
+            return true;
+          }
+          const p = curAtom.parent;
+          const br = curAtom.parentBranch;
+          if (
+            p &&
+            p !== integrandBox &&
+            ((p.type === 'genfrac' && br === 'above' && p.below) ||
+              (p.type === 'surd' && br === 'above' && p.body) ||
+              ((br === 'subscript' || br === 'below') && p.superscript))
+          ) {
+            return false;
+          }
+          if (diffBox && Array.isArray(diffBox.body)) {
+            return focusIntegralBranch(model, diffBox.body, 'end');
+          }
         }
-        // Desde el límite superior (superscript) -> volver al límite inferior (subscript)
+        // 4. Desde recuadro del diferencial -> salir justo a la derecha de la integral
+        if (inDiff && diffBox) {
+          const nextDiffPh = findAdjacentPlaceholder(model, diffBox.body, true);
+          if (nextDiffPh) {
+            setModelCursor(model, model.offsetOf(nextDiffPh));
+            return true;
+          }
+          setModelCursor(model, model.offsetOf(diffBox));
+          return true;
+        }
+      } else {
+        // En reversa (Ctrl+Tab / Shift+Tab):
+        if (inDiff) {
+          const prevDiffPh = findAdjacentPlaceholder(model, diffBox?.body, false);
+          if (prevDiffPh) {
+            setModelCursor(model, model.offsetOf(prevDiffPh));
+            return true;
+          }
+          if (integrandBox && Array.isArray(integrandBox.body)) {
+            return focusIntegralBranch(model, integrandBox.body, 'end');
+          }
+        }
+        if (isIntegrand) {
+          const prevIntPh = integrandBox ? findAdjacentPlaceholder(model, integrandBox.body, false) : null;
+          if (prevIntPh) {
+            setModelCursor(model, model.offsetOf(prevIntPh));
+            return true;
+          }
+          if (intAtom.superscript) {
+            return focusIntegralBranch(model, intAtom.superscript, 'end');
+          }
+          const beforeOffset = intAtom.leftSibling ? model.offsetOf(intAtom.leftSibling) : 0;
+          setModelCursor(model, Math.max(0, beforeOffset));
+          return true;
+        }
         if (inSuperscript && intAtom.subscript) {
+          const prevSupPh = findAdjacentPlaceholder(model, intAtom.superscript, false);
+          if (prevSupPh) {
+            setModelCursor(model, model.offsetOf(prevSupPh));
+            return true;
+          }
           return focusIntegralBranch(model, intAtom.subscript, 'end');
         }
       }
@@ -3448,7 +3586,7 @@
       const curAtom = model.at(model.position);
       if (!curAtom) return false;
 
-      const { intAtom, inSubscript, inSuperscript, isIntegrand } = findIntegralContext(curAtom, model);
+      const { intAtom, integrandBox, inSubscript, inSuperscript, isIntegrand } = findIntegralContext(curAtom, model);
       if (!intAtom) return false;
 
       // Caso A: El cursor está en el LÍMITE INFERIOR (subscript)
@@ -3465,6 +3603,9 @@
             model.selectionIsPlaceholder ||
             (curAtom.parent === intAtom && curAtom === subBranch[subBranch.length - 1]);
           if (atRightEdge) {
+            if (integrandBox && Array.isArray(integrandBox.body)) {
+              return focusIntegralBranch(model, integrandBox.body, 'start');
+            }
             const integrandAtom = intAtom.rightSibling;
             if (integrandAtom && integrandAtom.type === 'placeholder') {
               setModelCursor(model, model.offsetOf(integrandAtom));
@@ -3500,6 +3641,9 @@
             model.selectionIsPlaceholder ||
             (curAtom.parent === intAtom && curAtom === supBranch[supBranch.length - 1]);
           if (atRightEdge) {
+            if (integrandBox && Array.isArray(integrandBox.body)) {
+              return focusIntegralBranch(model, integrandBox.body, 'start');
+            }
             const integrandAtom = intAtom.rightSibling;
             if (integrandAtom && integrandAtom.type === 'placeholder') {
               setModelCursor(model, model.offsetOf(integrandAtom));
@@ -3523,10 +3667,14 @@
 
       // Caso C: El cursor está al inicio del INTEGRANDO y pulsa Flecha Izquierda (◀)
       if (dir === 'left') {
-        if (isIntegrand && (model.selectionIsPlaceholder || curAtom === intAtom.rightSibling)) {
+        const atIntegrandBoxStart =
+          integrandBox &&
+          Array.isArray(integrandBox.body) &&
+          (curAtom === integrandBox.body[0] || (model.selectionIsPlaceholder && curAtom === integrandBox.body[1]));
+        if ((isIntegrand && (model.selectionIsPlaceholder || curAtom === intAtom.rightSibling || atIntegrandBoxStart)) && intAtom.superscript) {
           return focusIntegralBranch(model, intAtom.superscript, 'end');
         }
-        if (model.selectionIsCollapsed && curAtom === intAtom) {
+        if (model.selectionIsCollapsed && curAtom === intAtom && intAtom.superscript) {
           return focusIntegralBranch(model, intAtom.superscript, 'end');
         }
       }

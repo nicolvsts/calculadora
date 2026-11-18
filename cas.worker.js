@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.33';
+const WORKER_VERSION = 'v1.34';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -178,6 +178,48 @@ function normalizeStackedIntegrals(str) {
     }
   }
   return s;
+}
+
+const RESERVED_MATH_IDS = new Set([
+  'e', 'i', 'pi', 'infinity', 'sin', 'cos', 'tan', 'csc', 'sec', 'cot',
+  'asin', 'acos', 'atan', 'acsc', 'asec', 'acot', 'sinh', 'cosh', 'tanh',
+  'ln', 'log', 'log10', 'exp', 'sqrt', 'abs', 'sign', 'floor', 'ceil',
+  'simplify', 'regroup', 'evalf', 'diff', 'integrate', 'subst', 'when'
+]);
+
+function detectDifferentialVar(diffGiacExpr, integrandGiacExpr = '') {
+  const pickFromLname = (exprStr) => {
+    if (!caseval) return [];
+    const raw = caseval(`lname(${exprStr})`).replace(/;$/, '').trim();
+    if (
+      !raw ||
+      raw === 'undef' ||
+      raw.startsWith('GIAC_ERROR') ||
+      raw.toLowerCase().startsWith('error') ||
+      raw.includes('syntax error')
+    ) {
+      return [];
+    }
+    return extractScalarItems(raw)
+      .map((v) => v.trim())
+      .filter((v) => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(v) && !RESERVED_MATH_IDS.has(v));
+  };
+
+  let diffVars = pickFromLname(diffGiacExpr);
+  if (diffVars.length === 0) {
+    const matches = diffGiacExpr.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [];
+    diffVars = matches.filter((v) => !RESERVED_MATH_IDS.has(v));
+  }
+  if (diffVars.length === 1) return diffVars[0];
+  if (diffVars.length > 1) {
+    if (integrandGiacExpr) {
+      const intVars = pickFromLname(integrandGiacExpr);
+      const shared = diffVars.find((v) => intVars.includes(v));
+      if (shared) return shared;
+    }
+    return diffVars[0];
+  }
+  return 'x';
 }
 
 /**
@@ -405,7 +447,7 @@ function latexToGiac(rawLatex) {
     s = s.slice(0, idx) + `limit(${vBody}, ${vName}, ${vPt})` + s.slice(cur);
   }
 
-  // Integrales definidas e indefinidas: \int_{a}^{b} expr dvar o \int expr dvar
+  // Integrales definidas e indefinidas: soporta recuadros \boxed{...} y diferenciales compuestos d(g(x))
   while (s.includes('\\int')) {
     const idx = s.indexOf('\\int');
     let cur = skipSpaces(s, idx + 4);
@@ -421,21 +463,92 @@ function latexToGiac(rawLatex) {
         if (b) { upStr = latexToGiac(b.content); cur = b.endIdx; }
       }
     }
-    const rest = s.slice(cur);
-    const dMatch = rest.match(/(?:\\differentialD|\bd)\s*\(?([a-zA-Z_][a-zA-Z0-9_]*)\)?/);
-    if (dMatch) {
-      // Quitar un operador de multiplicación colgante antes del diferencial (p. ej. "sin(x)·cos(x)·dx")
-      const integrandRaw = rest
-        .slice(0, dMatch.index)
-        .replace(/(?:\\cdot|\\times|\*|\s)+$/, '')
-        .trim();
-      const varName = dMatch[1];
-      const afterIdx = cur + dMatch.index + dMatch[0].length;
-      const integrand = latexToGiac(integrandRaw || '1');
-      const giacInt =
-        lowStr !== null && upStr !== null
-          ? `integrate(${integrand}, ${varName}, ${lowStr}, ${upStr})`
-          : `integrate(${integrand}, ${varName})`;
+
+    let integrandRaw = null;
+    let diffRaw = null;
+    let afterIdx = -1;
+
+    const curAfterLim = skipSpaces(s, cur);
+    if (s.startsWith('\\boxed', curAfterLim)) {
+      const boxBlock = extractTexArg(s, curAfterLim + 6);
+      if (boxBlock) {
+        integrandRaw = boxBlock.content;
+        let dCur = skipSpaces(s, boxBlock.endIdx);
+        const sepMatch = s.slice(dCur).match(/^(?:\\cdot|\\times|\*|\s)+/);
+        if (sepMatch) dCur += sepMatch[0].length;
+        const dPrefix = s.slice(dCur).match(/^(?:\\differentialD|d(?![a-zA-Z_]))\s*/);
+        if (dPrefix) {
+          const vCur = skipSpaces(s, dCur + dPrefix[0].length);
+          if (s.startsWith('\\boxed', vCur)) {
+            const diffBoxBlock = extractTexArg(s, vCur + 6);
+            if (diffBoxBlock) {
+              diffRaw = diffBoxBlock.content;
+              afterIdx = diffBoxBlock.endIdx;
+            }
+          } else if (s[vCur] === '(') {
+            const parenBlock = extractBalanced(s, vCur, '(', ')');
+            if (parenBlock) {
+              diffRaw = parenBlock.content;
+              afterIdx = parenBlock.endIdx;
+            }
+          } else {
+            const varMatch = s.slice(vCur).match(/^([a-zA-Z_][a-zA-Z0-9_]*)/);
+            if (varMatch) {
+              diffRaw = varMatch[1];
+              afterIdx = vCur + varMatch[1].length;
+            }
+          }
+        }
+      }
+    }
+
+    if (afterIdx === -1) {
+      const rest = s.slice(cur);
+      const dMatch = rest.match(/(?:\\differentialD|\bd)\s*/);
+      if (dMatch) {
+        const dStartInRest = dMatch.index;
+        const afterDPos = cur + dStartInRest + dMatch[0].length;
+        if (s.startsWith('\\boxed', afterDPos)) {
+          const diffBoxBlock = extractTexArg(s, afterDPos + 6);
+          if (diffBoxBlock) {
+            integrandRaw = rest.slice(0, dStartInRest).replace(/(?:\\cdot|\\times|\*|\s)+$/, '').trim();
+            diffRaw = diffBoxBlock.content;
+            afterIdx = diffBoxBlock.endIdx;
+          }
+        } else if (s[afterDPos] === '(') {
+          const parenBlock = extractBalanced(s, afterDPos, '(', ')');
+          if (parenBlock) {
+            integrandRaw = rest.slice(0, dStartInRest).replace(/(?:\\cdot|\\times|\*|\s)+$/, '').trim();
+            diffRaw = parenBlock.content;
+            afterIdx = parenBlock.endIdx;
+          }
+        } else {
+          const varMatch = s.slice(afterDPos).match(/^([a-zA-Z_][a-zA-Z0-9_]*)/);
+          if (varMatch) {
+            integrandRaw = rest.slice(0, dStartInRest).replace(/(?:\\cdot|\\times|\*|\s)+$/, '').trim();
+            diffRaw = varMatch[1];
+            afterIdx = afterDPos + varMatch[1].length;
+          }
+        }
+      }
+    }
+
+    if (afterIdx !== -1 && diffRaw !== null) {
+      const integrand = latexToGiac((integrandRaw || '').trim() || '1');
+      const diffExpr = stripOuterParensAndList(latexToGiac(diffRaw.trim() || 'x'));
+      let giacInt;
+      if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(diffExpr)) {
+        giacInt =
+          lowStr !== null && upStr !== null
+            ? `(integrate(${integrand}, ${diffExpr}, ${lowStr}, ${upStr}))`
+            : `(integrate(${integrand}, ${diffExpr}))`;
+      } else {
+        const varName = detectDifferentialVar(diffExpr, integrand);
+        giacInt =
+          lowStr !== null && upStr !== null
+            ? `(integrate((${integrand}) * diff(${diffExpr}, ${varName}), ${varName}, ${lowStr}, ${upStr}))`
+            : `(integrate((${integrand}) * diff(${diffExpr}, ${varName}), ${varName}))`;
+      }
       s = s.slice(0, idx) + giacInt + s.slice(afterIdx);
     } else {
       break;
@@ -537,6 +650,14 @@ function latexToGiac(rawLatex) {
     s = s.slice(0, idx) + '__SUB__' + s.slice(idx + 1);
   }
   s = s.replace(/__SUB__/g, '_');
+
+  // Recuadros generales \boxed{...} -> (...)
+  while (s.includes('\\boxed')) {
+    const idx = s.indexOf('\\boxed');
+    const b = extractTexArg(s, idx + 6);
+    if (!b) break;
+    s = s.slice(0, idx) + `(${latexToGiac(b.content)})` + s.slice(b.endIdx);
+  }
 
   // Bloques residuales entre llaves {a} -> (a)
   while (s.includes('{')) {
