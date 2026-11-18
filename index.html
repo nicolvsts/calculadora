@@ -885,7 +885,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.36</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.37</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1396,7 +1396,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.36';
+    const APP_VERSION = 'v1.37';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -3806,6 +3806,32 @@
       const curAtom = model.at(model.position);
       if (!curAtom) return false;
 
+      // Si el cursor está colapsado justo a la derecha de diffBox o integrandBox, entrar al final de la caja en lugar de desenvolverla
+      if (model.selectionIsCollapsed && curAtom.type === 'box') {
+        let sib = curAtom.leftSibling;
+        while (sib) {
+          if (sib.command === '\\int') {
+            const { integrandBox: iBox, diffBox: dBox } = locateIntegralBoxes(sib);
+            if (curAtom === dBox && Array.isArray(dBox.body)) {
+              const dSym = dBox.body.find((a) => isDiffSymbolAtom(a));
+              const lastDiffAtom = dBox.body[dBox.body.length - 1];
+              if (lastDiffAtom && lastDiffAtom !== dSym) {
+                setModelCursor(model, model.offsetOf(lastDiffAtom));
+              } else {
+                focusIntegralBranch(model, dBox.body, 'end');
+              }
+              return true;
+            }
+            if (curAtom === iBox && Array.isArray(iBox.body)) {
+              focusIntegralBranch(model, iBox.body, 'end');
+              return true;
+            }
+            break;
+          }
+          sib = sib.leftSibling;
+        }
+      }
+
       const { intAtom, integrandBox, diffBox, inDiff } = findIntegralContext(curAtom, model);
       if (!intAtom || !diffBox || !Array.isArray(diffBox.body)) return false;
 
@@ -3828,18 +3854,6 @@
           }
           return true;
         }
-        return false;
-      }
-
-      // Si el cursor está justo a la derecha de diffBox (fuera de la integral), entrar al final de diffBox en lugar de borrar todo el bloque
-      if (model.selectionIsCollapsed && curAtom === diffBox) {
-        const lastDiffAtom = diffBox.body[diffBox.body.length - 1];
-        if (lastDiffAtom && lastDiffAtom !== dAtom) {
-          setModelCursor(model, model.offsetOf(lastDiffAtom));
-        } else {
-          focusIntegralBranch(model, diffBox.body, 'end');
-        }
-        return true;
       }
 
       return false;

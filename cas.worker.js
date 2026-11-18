@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.36';
+const WORKER_VERSION = 'v1.37';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -335,6 +335,29 @@ function latexToGiac(rawLatex) {
     return prefix + '*' + fnCmd;
   });
 
+  // Potencias sobre funciones trigonométricas/hiperbólicas/ln: \sin^{2}(x) -> (\sin(x))^{2} (excepto ^{-1} inversas)
+  {
+    const trigPowRe = /\\(sin|cos|tan|csc|sec|cot|sinh|cosh|tanh|ln)\s*\^/;
+    let m;
+    while ((m = trigPowRe.exec(s)) !== null) {
+      const fnName = m[1];
+      const caretEnd = m.index + m[0].length;
+      const expBlock = extractTexArg(s, caretEnd);
+      if (!expBlock) break;
+      if (expBlock.content.trim() === '-1' && fnName !== 'ln') {
+        s = s.slice(0, m.index) + `a${fnName}` + s.slice(expBlock.endIdx);
+        continue;
+      }
+      const afterExp = skipSpaces(s, expBlock.endIdx);
+      const argBlock = s[afterExp] === '(' ? extractBalanced(s, afterExp, '(', ')') : extractTexArg(s, afterExp);
+      if (!argBlock) break;
+      s =
+        s.slice(0, m.index) +
+        `(${fnName}(${argBlock.content}))^{${expBlock.content}}` +
+        s.slice(argBlock.endIdx);
+    }
+  }
+
   // Funciones trigonométricas inversas antes de procesar exponentes
   s = s
     .replace(/\\sin\s*\^\s*\{-1\}/g, 'asin')
@@ -631,13 +654,13 @@ function latexToGiac(rawLatex) {
       const expBlock = extractTexArg(s, cur);
       if (expBlock) {
         const innerExp = latexToGiac(expBlock.content);
-        s = s.slice(0, idx) + `__POW__(${innerExp})` + s.slice(expBlock.endIdx);
+        s = s.slice(0, idx) + `@@POW@@(${innerExp})` + s.slice(expBlock.endIdx);
         continue;
       }
     }
-    s = s.slice(0, idx) + '__POW__' + s.slice(idx + 1);
+    s = s.slice(0, idx) + '@@POW@@' + s.slice(idx + 1);
   }
-  s = s.replace(/__POW__/g, '^');
+  s = s.replace(/@@POW@@/g, '^');
 
   // Subíndices _{...} -> _...
   while (s.includes('_')) {
@@ -646,13 +669,13 @@ function latexToGiac(rawLatex) {
     if (s[cur] === '{') {
       const subBlock = extractBalanced(s, cur, '{', '}');
       if (subBlock) {
-        s = s.slice(0, idx) + '__SUB__' + latexToGiac(subBlock.content) + s.slice(subBlock.endIdx);
+        s = s.slice(0, idx) + '@@SUB@@' + latexToGiac(subBlock.content) + s.slice(subBlock.endIdx);
         continue;
       }
     }
-    s = s.slice(0, idx) + '__SUB__' + s.slice(idx + 1);
+    s = s.slice(0, idx) + '@@SUB@@' + s.slice(idx + 1);
   }
-  s = s.replace(/__SUB__/g, '_');
+  s = s.replace(/@@SUB@@/g, '_');
 
   // Recuadros generales \boxed{...} -> (...)
   while (s.includes('\\boxed')) {
@@ -1366,6 +1389,9 @@ function giacExprToLatex(exprStr) {
   if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
     s = s.slice(1, -1);
   }
+  s = s
+    .replace(/\\mathrm\{([a-zA-Z]+)\\_([a-zA-Z0-9]+)\}/g, '$1_{$2}')
+    .replace(/([a-zA-Z0-9])\\_([a-zA-Z0-9]+)/g, '$1_{$2}');
   s = s.replace(/\\frac\{\(([^()]+)\)\}/g, '\\frac{$1}');
   s = normalizeGiacTrigPowers(s);
   s = cleanOutputMultiplicationDots(s);
