@@ -885,7 +885,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.39</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.40</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1396,7 +1396,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.39';
+    const APP_VERSION = 'v1.40';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -1452,6 +1452,8 @@
       focusIndex: 0,
       onBack: null,
       onSwitchTab: null,
+      onSwitchTabLeft: null,
+      onSwitchTabRight: null,
       onDigit: null,
       onKeyAction: null
     };
@@ -2121,6 +2123,8 @@
       modalNav.cols = options.cols || 4;
       modalNav.onBack = options.onBack || null;
       modalNav.onSwitchTab = options.onSwitchTab || null;
+      modalNav.onSwitchTabLeft = options.onSwitchTabLeft || null;
+      modalNav.onSwitchTabRight = options.onSwitchTabRight || null;
       modalNav.onDigit = options.onDigit || null;
       modalNav.onKeyAction = options.onKeyAction || null;
       modalNav.onFocusChange = options.onFocusChange || null;
@@ -2141,6 +2145,8 @@
       modalNav.items = [];
       modalNav.onBack = null;
       modalNav.onSwitchTab = null;
+      modalNav.onSwitchTabLeft = null;
+      modalNav.onSwitchTabRight = null;
       modalNav.onDigit = null;
       modalNav.onKeyAction = null;
       modalNav.onFocusChange = null;
@@ -2177,29 +2183,50 @@
             curItem.onArrowRight();
           } else if (curItem && curItem.dataset.hasSubmenu === 'true') {
             curItem.click();
-          } else if (modalNav.onSwitchTab) {
-            modalNav.onSwitchTab();
+          } else if (modalNav.onSwitchTabRight || modalNav.onSwitchTab) {
+            (modalNav.onSwitchTabRight || modalNav.onSwitchTab)();
           }
         } else if (dir === 'left') {
           if (curItem && typeof curItem.onArrowLeft === 'function') {
             curItem.onArrowLeft();
           } else if (modalNav.onBack) {
             modalNav.onBack();
-          } else if (modalNav.onSwitchTab) {
-            modalNav.onSwitchTab();
+          } else if (modalNav.onSwitchTabLeft || modalNav.onSwitchTab) {
+            (modalNav.onSwitchTabLeft || modalNav.onSwitchTab)();
           }
         }
       } else {
-        // Modo cuadrícula 2D ('grid')
+        // Modo cuadrícula 2D ('grid'): navegación espacial acotada (sin wrap-around) + bajada diagonal en fila incompleta
         const cols = modalNav.cols || 4;
+        const cur = modalNav.focusIndex;
+        const row = Math.floor(cur / cols);
+        const col = cur % cols;
+        const lastRow = Math.floor((len - 1) / cols);
+        const rowEnd = Math.min((row + 1) * cols - 1, len - 1);
+
         if (dir === 'right') {
-          modalNav.focusIndex = (modalNav.focusIndex + 1) % len;
+          if (cur < rowEnd) {
+            modalNav.focusIndex = cur + 1;
+          } else if (modalNav.onSwitchTabRight) {
+            modalNav.onSwitchTabRight();
+            return;
+          }
         } else if (dir === 'left') {
-          modalNav.focusIndex = (modalNav.focusIndex - 1 + len) % len;
+          if (col > 0) {
+            modalNav.focusIndex = cur - 1;
+          } else if (modalNav.onSwitchTabLeft || modalNav.onSwitchTab) {
+            (modalNav.onSwitchTabLeft || modalNav.onSwitchTab)();
+            return;
+          }
         } else if (dir === 'down') {
-          modalNav.focusIndex = (modalNav.focusIndex + cols) % len;
+          if (row < lastRow) {
+            const directBelow = cur + cols;
+            modalNav.focusIndex = directBelow < len ? directBelow : len - 1;
+          }
         } else if (dir === 'up') {
-          modalNav.focusIndex = (modalNav.focusIndex - cols + len) % len;
+          if (row > 0) {
+            modalNav.focusIndex = cur - cols;
+          }
         }
         updateModalFocus();
       }
@@ -2212,9 +2239,10 @@
 
     document.getElementById('modal-close-btn').addEventListener('click', closeModal);
 
-    function renderGridPalette(container, items) {
+    function renderGridPalette(container, items, cols = modalNav.cols || 4) {
       const grid = document.createElement('div');
       grid.className = 'palette-grid';
+      grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
       items.forEach(({ label, katexPreview, latex, action }) => {
         const cell = document.createElement('button');
         cell.className = 'palette-cell';
@@ -2873,9 +2901,8 @@
 
     // 6. Catálogo Oficial (📖) y Paleta de Símbolos (∞β°)
     function openCatalogModal(initialTab = 'CAT') {
-      const nextTab = initialTab === 'CAT' ? 'SYM' : 'CAT';
       openModal(
-        initialTab === 'SYM' ? 'Paleta de Símbolos (∞β°) [◀/▶ Pestaña]' : 'Catálogo TI-Nspire CAS (📖) [◀/▶ Pestaña]',
+        initialTab === 'SYM' ? 'Paleta de Símbolos (∞β°) [◀ Comandos]' : 'Catálogo TI-Nspire CAS (📖) [▶ Símbolos]',
         (body) => {
           const tabBar = document.createElement('div');
           tabBar.style.display = 'flex';
@@ -3008,7 +3035,8 @@
         {
           mode: initialTab === 'SYM' ? 'grid' : 'list',
           cols: 4,
-          onSwitchTab: () => openCatalogModal(nextTab)
+          onSwitchTabRight: initialTab === 'CAT' ? () => openCatalogModal('SYM') : null,
+          onSwitchTabLeft: initialTab === 'SYM' ? () => openCatalogModal('CAT') : null
         }
       );
     }
