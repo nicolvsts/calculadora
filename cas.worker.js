@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.37';
+const WORKER_VERSION = 'v1.38';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -223,6 +223,112 @@ function detectDifferentialVar(diffGiacExpr, integrandGiacExpr = '') {
 }
 
 /**
+ * Sustituye la letra normal `i` (como variable de índice en \sum_{i=...} o \prod_{i=...})
+ * por un identificador interno seguro `idx_i_`, preservando comandos TeX como `\imaginaryI`, `\sin`, `\pi`, etc.
+ */
+function replacePlainIndexIInLatex(bodyStr) {
+  const cmds = [];
+  let s = bodyStr.replace(/\\[a-zA-Z]+/g, (m) => {
+    const token = `\x00CMD${cmds.length}\x00`;
+    cmds.push(m);
+    return token;
+  });
+  // `2i` -> `2*idx_i_` y `i` aislada -> `idx_i_`
+  s = s.replace(/([0-9])i(?![a-zA-Z0-9_])/g, '$1*idx_i_');
+  s = s.replace(/(?<![a-zA-Z0-9_])i(?![a-zA-Z0-9_])/g, 'idx_i_');
+  s = s.replace(/\x00CMD(\d+)\x00/g, (_, idx) => cmds[Number(idx)]);
+  return s;
+}
+
+/**
+ * Convierte pares balanceados de barras verticales simples `|...|` (escritas desde el teclado físico)
+ * en `abs(...)`, dejando intactas barras sueltas `|` usadas como operador "tal que".
+ */
+function replacePlainAbsBars(str) {
+  let s = str;
+  const openPrevRe = /[(\[{,+\-*/^=<>!:|]$/;
+  let safety = 0;
+  while (s.includes('|') && safety++ < 50) {
+    const stack = [];
+    let matched = null;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] !== '|') continue;
+      // Determinar el carácter significativo anterior (saltando espacios)
+      let p = i - 1;
+      while (p >= 0 && /\s/.test(s[p])) p--;
+      const prevChar = p >= 0 ? s[p] : '';
+      const isOpen = p < 0 || openPrevRe.test(prevChar);
+      if (isOpen) {
+        stack.push(i);
+      } else if (stack.length > 0) {
+        const openIdx = stack.pop();
+        matched = { openIdx, closeIdx: i };
+        break;
+      }
+    }
+    if (!matched) break;
+    const inner = latexToGiac(s.slice(matched.openIdx + 1, matched.closeIdx));
+    s = s.slice(0, matched.openIdx) + `abs(${inner})` + s.slice(matched.closeIdx + 1);
+  }
+  return s;
+}
+
+/**
+ * Convierte el operando previo a cada símbolo de grados `°` a radianes `((operand)*pi/180)`
+ * soportando números, variables (`x°`, `theta°`) y paréntesis arbitrariamente anidados (`((90)/(2))°`).
+ */
+function replaceDegreeOperands(expr) {
+  let s = expr;
+  let searchFrom = 0;
+  while (true) {
+    const degIdx = s.indexOf('°', searchFrom);
+    if (degIdx === -1) break;
+    let end = degIdx - 1;
+    while (end >= 0 && /\s/.test(s[end])) end--;
+    if (end < 0) {
+      s = s.slice(0, degIdx) + s.slice(degIdx + 1);
+      continue;
+    }
+    let start = end;
+    if (s[end] === ')') {
+      let depth = 1;
+      start = end - 1;
+      while (start >= 0 && depth > 0) {
+        if (s[start] === ')') depth++;
+        else if (s[start] === '(') depth--;
+        start--;
+      }
+      start++;
+    } else {
+      while (start >= 0 && /[a-zA-Z0-9_.]/.test(s[start])) start--;
+      start++;
+    }
+    const operand = s.slice(start, end + 1);
+    if (operand) {
+      const repl = `((${operand})*pi/180)`;
+      s = s.slice(0, start) + repl + s.slice(degIdx + 1);
+      searchFrom = start + repl.length;
+    } else {
+      s = s.slice(0, degIdx) + s.slice(degIdx + 1);
+    }
+  }
+  return s;
+}
+
+const VALUE_TEX_CMD = 'pi|exponentialE|imaginaryI|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|rho|sigma|tau|phi|omega|Delta|Sigma|Omega';
+const SPACE_MULT_SKIP_LEFT = new Set([
+  'define', 'delvar', 'clearaz', 'and', 'or', 'not', 'xor', 'if', 'then', 'else', 'fi',
+  'for', 'from', 'to', 'by', 'do', 'od', 'while', 'return', 'local',
+  'sin', 'cos', 'tan', 'csc', 'sec', 'cot', 'asin', 'acos', 'atan', 'acsc', 'asec', 'acot',
+  'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh', 'ln', 'log', 'log10', 'exp', 'sqrt',
+  'abs', 'diff', 'integrate', 'limit', 'sum', 'product', 'solve', 'csolve', 'fsolve',
+  'factor', 'expand', 'simplify', 'when', 'subst', 'select', 'convert'
+]);
+const SPACE_MULT_SKIP_RIGHT = new Set([
+  'and', 'or', 'not', 'xor', 'then', 'else', 'do', 'to', 'fi', 'od'
+]);
+
+/**
  * Convierte LaTeX 2D interactivo (procedente de MathLive <math-field>) a sintaxis algebraica Giac/TI-Nspire.
  * Soporta fracciones anidadas, integrales definidas/indefinidas, derivadas de orden n, raíces n-ésimas,
  * sumatorias, productorias, límites, logaritmos en base b y matrices 2D.
@@ -300,16 +406,49 @@ function latexToGiac(rawLatex) {
     convertMatrixBody
   );
 
-  // Valor absoluto \left| ... \right|
-  while (s.includes('\\left|')) {
-    const start = s.indexOf('\\left|');
-    const end = s.indexOf('\\right|', start + 6);
-    if (end !== -1) {
-      const inner = latexToGiac(s.slice(start + 6, end));
-      s = s.slice(0, start) + `abs(${inner})` + s.slice(end + 7);
+  // Proteger operador "tal que" (\mid / \vert) antes de procesar barras de valor absoluto
+  s = s.replace(/\\mid\b|\\vert\b/g, ' @@SUCHTHAT@@ ');
+
+  // Valor absoluto balanceado \left| ... \right| (soporta anidación arbitraria incluso con fracciones dentro)
+  while (/\\left\s*\|/.test(s)) {
+    const mStart = /\\left\s*\|/.exec(s);
+    const start = mStart.index;
+    let i = start + mStart[0].length;
+    let depth = 1;
+    let closeStart = -1;
+    let closeEnd = -1;
+    while (i < s.length && depth > 0) {
+      const rest = s.slice(i);
+      const mOpen = rest.match(/^\\left\s*\|/);
+      if (mOpen) {
+        depth++;
+        i += mOpen[0].length;
+        continue;
+      }
+      const mClose = rest.match(/^\\right\s*\|/);
+      if (mClose) {
+        depth--;
+        if (depth === 0) {
+          closeStart = i;
+          closeEnd = i + mClose[0].length;
+          break;
+        }
+        i += mClose[0].length;
+        continue;
+      }
+      i++;
+    }
+    if (closeStart !== -1) {
+      const inner = latexToGiac(s.slice(start + mStart[0].length, closeStart));
+      s = s.slice(0, start) + `abs(${inner})` + s.slice(closeEnd);
     } else {
       break;
     }
+  }
+
+  // Valor absoluto con barras simples del teclado físico `|...|`
+  if (s.includes('|')) {
+    s = replacePlainAbsBars(s);
   }
 
   s = s
@@ -437,15 +576,24 @@ function latexToGiac(rawLatex) {
         cur = s.length;
       }
       const eqSplit = lowPart.split('=');
-      const vName = latexToGiac(eqSplit[0] || 'k');
+      const rawIndexVar = (eqSplit[0] || 'k').trim();
+      let vName;
+      let processedBody = bodyStr;
+      // Permitir el índice clásico `i` (teclado) en sumatorias/productorias sin chocar con \imaginaryI (√-1)
+      if (rawIndexVar === 'i') {
+        vName = 'idx_i_';
+        processedBody = replacePlainIndexIInLatex(bodyStr);
+      } else {
+        vName = latexToGiac(rawIndexVar);
+      }
       const vLow = latexToGiac(eqSplit[1] || '1');
       const vUp = latexToGiac(upPart || 'n');
-      const vBody = latexToGiac(bodyStr);
+      const vBody = latexToGiac(processedBody);
       s = s.slice(0, idx) + `${giacFn}(${vBody}, ${vName}, ${vLow}, ${vUp})` + s.slice(cur);
     }
   }
 
-  // Límite \lim_{x \to a}(expr)
+  // Límite \lim_{x \to a}(expr), incluyendo límites laterales \lim_{x \to a^{+}} y \lim_{x \to a^{-}}
   while (s.includes('\\lim')) {
     const idx = s.indexOf('\\lim');
     let cur = skipSpaces(s, idx + 4);
@@ -468,9 +616,22 @@ function latexToGiac(rawLatex) {
     }
     const toSplit = subContent.split(/\\to|\\rightarrow|->/);
     const vName = latexToGiac(toSplit[0] || 'x');
-    const vPt = latexToGiac(toSplit[1] || '0');
+    let rawPt = (toSplit[1] || '0').trim();
+    let limitDir = 0;
+    if (/\^\s*(?:\{\s*\+\s*\}|\+)\s*$/.test(rawPt)) {
+      limitDir = 1;
+      rawPt = rawPt.replace(/\^\s*(?:\{\s*\+\s*\}|\+)\s*$/, '').trim();
+    } else if (/\^\s*(?:\{\s*-\s*\}|-)\s*$/.test(rawPt)) {
+      limitDir = -1;
+      rawPt = rawPt.replace(/\^\s*(?:\{\s*-\s*\}|-)\s*$/, '').trim();
+    }
+    const vPt = latexToGiac(rawPt || '0');
     const vBody = latexToGiac(bodyStr);
-    s = s.slice(0, idx) + `limit(${vBody}, ${vName}, ${vPt})` + s.slice(cur);
+    const limitCall =
+      limitDir !== 0
+        ? `limit(${vBody}, ${vName}, ${vPt}, ${limitDir})`
+        : `limit(${vBody}, ${vName}, ${vPt})`;
+    s = s.slice(0, idx) + limitCall + s.slice(cur);
   }
 
   // Integrales definidas e indefinidas: soporta recuadros \boxed{...} y diferenciales compuestos d(g(x))
@@ -593,13 +754,33 @@ function latexToGiac(rawLatex) {
     const denRaw = denBlock.content.trim();
     const afterFrac = skipSpaces(s, denBlock.endIdx);
 
-    // Comprobar si es plantilla de derivada: \frac{d}{dx}(expr) o \frac{d^{n}}{dx^{n}}(expr)
-    const derivNumMatch = numRaw.match(/^(?:\\differentialD|d)(?:\^\s*\{?(\d+|\w+)\}?)?$/);
-    const derivDenMatch = denRaw.match(/^(?:\\differentialD|d)\s*([a-zA-Z_][a-zA-Z0-9_]*)(?:\^\s*\{?(\d+|\w+)\}?)?$/);
+    // Comprobar si es plantilla de derivada: \frac{d}{dx}(expr), \frac{d}{d\theta}(expr), \frac{d^{n}}{dx_{1}^{n}}(expr)
+    const derivNumMatch = numRaw.match(/^(?:\\differentialD|d)(?:\^\s*(?:\{([^}]+)\}|(\d+|[a-zA-Z])))?$/);
+    let derivDenParsed = null;
+    if (derivNumMatch) {
+      const mPrefix = denRaw.match(/^(?:\\differentialD|d)\s*(.+)$/);
+      if (mPrefix) {
+        let rest = mPrefix[1].trim();
+        let denOrder = null;
+        const mExp = rest.match(/\^\s*(?:\{([^}]+)\}|(\d+|[a-zA-Z]))\s*$/);
+        if (mExp) {
+          denOrder = (mExp[1] || mExp[2] || '').trim();
+          rest = rest.slice(0, mExp.index).trim();
+        }
+        if (rest) {
+          const candidateVar = latexToGiac(rest);
+          if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(candidateVar) && !RESERVED_MATH_IDS.has(candidateVar)) {
+            derivDenParsed = { vName: candidateVar, denOrder };
+          }
+        }
+      }
+    }
 
-    if (derivNumMatch && derivDenMatch) {
-      const order = derivNumMatch[1] || derivDenMatch[2] || '1';
-      const vName = derivDenMatch[1];
+    if (derivNumMatch && derivDenParsed) {
+      const numOrder = (derivNumMatch[1] || derivNumMatch[2] || '').trim();
+      const orderRaw = numOrder || derivDenParsed.denOrder || '1';
+      const order = orderRaw === '1' ? '1' : latexToGiac(orderRaw);
+      const vName = derivDenParsed.vName;
       let targetExpr = '';
       let endTarget = afterFrac;
       if (s[afterFrac] === '(') {
@@ -693,8 +874,22 @@ function latexToGiac(rawLatex) {
     s = s.slice(0, idx) + `(${latexToGiac(b.content)})` + s.slice(b.endIdx);
   }
 
-  // Símbolos constantes, operadores relacionales y letras griegas en LaTeX
+  // Multiplicación implícita antes y entre constantes/letras griegas (\pi\imaginaryI, \imaginaryI\pi, \pi\theta, \alpha\beta, 2\theta)
+  const prefixValueTexRe = new RegExp('(\\\\?[a-zA-Z0-9_]+|\\)|\\])\\s*(\\\\(?:(?:' + VALUE_TEX_CMD + '))\\b)', 'g');
+  s = s.replace(prefixValueTexRe, (match, pre, cmd) => (pre.startsWith('\\') ? match : `${pre}*${cmd}`));
+  const adjValueTexRe = new RegExp(
+    '(\\\\(?:(?:' + VALUE_TEX_CMD + '))\\b)\\s*(?=\\\\(?:' + VALUE_TEX_CMD + '|sin|cos|tan|csc|sec|cot|sinh|cosh|tanh|arcsin|arccos|arctan|ln|log|exp|sqrt)\\b)',
+    'g'
+  );
+  s = s.replace(adjValueTexRe, '$1*');
+  const valueTexParenRe = new RegExp('(\\\\(?:(?:' + VALUE_TEX_CMD + '))\\b)\\s*(?=\\()', 'g');
+  s = s.replace(valueTexParenRe, '$1*');
+
+  // Símbolos constantes, grados, operadores relacionales y letras griegas en LaTeX
   s = s
+    .replace(/\^\s*\(\s*\\circ\s*\)/g, '°')
+    .replace(/\^\s*\\circ\b/g, '°')
+    .replace(/\\degree\b/g, '°')
     .replace(/\\exponentialE\b/g, 'e')
     .replace(/\\imaginaryI\b/g, 'i')
     .replace(/\\pi\b/g, 'pi')
@@ -718,7 +913,6 @@ function latexToGiac(rawLatex) {
     .replace(/\\Sigma\b/g, 'Sigma')
     .replace(/\\Omega\b/g, 'Omega')
     .replace(/\\cdot/g, '*')
-    .replace(/\\mid\b|\\vert\b/g, '|')
     .replace(/\\times/g, '*')
     .replace(/\\div/g, '/')
     .replace(/\\neq/g, '!=')
@@ -742,7 +936,19 @@ function latexToGiac(rawLatex) {
     .replace(/(?<![a-zA-Z0-9_])([a-zA-Z])\s*\[\[/g, '$1*[[');
 
   // Multiplicación implícita tras un paréntesis de cierre: sin(x)cos(x) -> sin(x)*cos(x), (a+b)(c) -> (a+b)*(c), (x)2 -> (x)*2
-  s = s.replace(/\)\s*(?=[a-zA-Z0-9_(])/g, ')*');
+  s = s.replace(/\)\s*(?!(?:and|or|not|xor|then|else|do|to)\b)(?=[a-zA-Z0-9_(])/gi, ')*');
+
+  // Multiplicación implícita separada por espacios entre constantes/variables (ej. 2*pi x -> 2*pi*x, x y -> x*y)
+  if (!/^\s*DelVar\b/i.test(s)) {
+    s = s.replace(/([a-zA-Z0-9_]+)[ \t]+(?=([a-zA-Z0-9_]+))/g, (match, leftTok, rightTok) => {
+      if (SPACE_MULT_SKIP_LEFT.has(leftTok.toLowerCase())) return match;
+      if (SPACE_MULT_SKIP_RIGHT.has(rightTok.toLowerCase())) return match;
+      return `${leftTok}*`;
+    });
+  }
+
+  // Restaurar marcador de operador "tal que" (\mid / \vert)
+  s = s.replace(/@@SUCHTHAT@@/g, '|');
 
   return s.trim();
 }
@@ -889,18 +1095,34 @@ function buildSolveGiacExpr(solverFn, args) {
             !out.includes('syntax error')
         );
 
+      const getMatrixDims = (expr) => {
+        const d = evalClean(`dim(${expr})`);
+        const m = d.match(/^\[\s*(\d+)\s*,\s*(\d+)\s*\]$/);
+        return m ? { rows: Number(m[1]), cols: Number(m[2]) } : null;
+      };
+      const isGiacList = (expr) => {
+        if (getMatrixDims(expr)) return false;
+        const ev = evalClean(expr).replace(/^list\[/, '[');
+        return isValidGiacOut(ev) && ev.startsWith('[') && ev.endsWith(']');
+      };
+
       // Caso 1: solve(A * x = B, x) donde A es matriz (ncols > 1), B es vector/matriz y x es un identificador simple
       if (eqArgs.length === 1 && varArgs.length === 1 && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(varArgs[0].trim())) {
         const eqParts = splitTopLevelArgs(eqArgs[0], '=');
         if (eqParts.length === 2) {
           const [lhs, rhs] = eqParts;
           const v = varArgs[0].trim();
-          const isRhsMat = evalClean(`ckmatrix(${rhs})`) === '1';
-          const isRhsList = evalClean(`type(${rhs})`) === 'DOM_LIST';
-          if (isRhsMat || isRhsList) {
+          const rhsDims = getMatrixDims(rhs);
+          const rhsIsList = isGiacList(rhs);
+          if (rhsDims || rhsIsList) {
             const matA = evalClean(`subst(${lhs}, ${v}=1)`);
-            if (evalClean(`ckmatrix(${matA})`) === '1' && Number(evalClean(`ncols(${matA})`)) > 1) {
-              const rhsCol = isRhsMat ? rhs : `tran([${rhs}])`;
+            const aDims = getMatrixDims(matA);
+            if (aDims && aDims.cols > 1) {
+              const rhsCol = rhsDims
+                ? rhsDims.rows === 1 && aDims.rows > 1
+                  ? `tran(${rhs})`
+                  : rhs
+                : `tran([${rhs}])`;
               return `simult(${matA}, ${rhsCol})`;
             }
           }
@@ -916,17 +1138,15 @@ function buildSolveGiacExpr(solverFn, args) {
         [candA, candB] = [eqArgs[0], varArgs[0]];
       }
       if (candA && candB) {
-        const isAMat = evalClean(`ckmatrix(${candA})`) === '1';
+        const aDims = getMatrixDims(candA);
         const noVarsInAB = evalClean(`lname([${candA}, ${candB}])`) === '[]';
-        if (isAMat && noVarsInAB) {
-          const isBMat = evalClean(`ckmatrix(${candB})`) === '1';
-          const isBList = evalClean(`type(${candB})`) === 'DOM_LIST';
-          if (isBMat) {
-            const rowsA = Number(evalClean(`nrows(${candA})`));
-            const rowsB = Number(evalClean(`nrows(${candB})`));
-            const rhsCol = rowsB === 1 && rowsA > 1 ? `tran(${candB})` : candB;
+        if (aDims && noVarsInAB) {
+          const bDims = getMatrixDims(candB);
+          const bIsList = isGiacList(candB);
+          if (bDims) {
+            const rhsCol = bDims.rows === 1 && aDims.rows > 1 ? `tran(${candB})` : candB;
             return `simult(${candA}, ${rhsCol})`;
-          } else if (isBList) {
+          } else if (bIsList) {
             return `simult(${candA}, tran([${candB}]))`;
           }
         }
@@ -935,9 +1155,10 @@ function buildSolveGiacExpr(solverFn, args) {
       // Caso 3: solve(M) donde M es una matriz aumentada numérica n × (n+1)
       if (eqArgs.length === 1 && splitTopLevelArgs(eqArgs[0], '=').length === 1) {
         const M = eqArgs[0];
-        if (evalClean(`ckmatrix(${M})`) === '1' && evalClean(`lname(${M})`) === '[]') {
-          const r = Number(evalClean(`nrows(${M})`));
-          const c = Number(evalClean(`ncols(${M})`));
+        const mDims = getMatrixDims(M);
+        if (mDims && evalClean(`lname(${M})`) === '[]') {
+          const r = mDims.rows;
+          const c = mDims.cols;
           if (r >= 1 && c === r + 1) {
             return `simult(subMat(${M}, 0, 0, ${r - 1}, ${r - 1}), subMat(${M}, 0, ${r}, ${r - 1}, ${r}))`;
           }
@@ -1083,7 +1304,7 @@ function expandTIFunctions(input) {
   s = replaceFunctionCalls(s, 'cZeros', (a) => `cZeros(${a.join(', ')})`);
   s = replaceFunctionCalls(s, 'completeSquare', (a) => `canonical_form(${a.join(', ')})`);
   s = replaceFunctionCalls(s, 'polyRoots', (a) => `proot(${a.join(', ')})`);
-  s = replaceFunctionCalls(s, 'polyCoeffs', (a) => `symb2poly(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'polyCoeffs', (a) => `convert(symb2poly(${a.join(', ')}), list)`);
 
   // 3. Menú Cálculo
   s = replaceFunctionCalls(s, 'derivative', (a) => `diff(${a.join(', ')})`);
@@ -1096,14 +1317,35 @@ function expandTIFunctions(input) {
   });
   s = replaceFunctionCalls(s, 'taylor', (a) => {
     const [expr, v, order, pt = '0'] = a;
-    return `taylor(${expr}, ${v}=${pt}, ${order})`;
+    return `convert(taylor(${expr}, ${v}=${pt}, ${order}), polynom)`;
   });
 
   // 4. Menú Probabilidad y Estadística
   s = replaceFunctionCalls(s, 'nPr', (a) => `perm(${a.join(', ')})`);
   s = replaceFunctionCalls(s, 'nCr', (a) => `comb(${a.join(', ')})`);
   s = replaceFunctionCalls(s, 'randInt', (a) => `randint(${a.join(', ')})`);
-  s = replaceFunctionCalls(s, 'stdDev', (a) => `stddev(${a.join(', ')})`);
+  // Mediana estándar (promedio de los dos valores centrales cuando el tamaño de la lista es par)
+  s = replaceFunctionCalls(
+    s,
+    'median',
+    (a) => `((L_med -> (sort(L_med)[floor((size(L_med)-1)/2)] + sort(L_med)[floor(size(L_med)/2)]) / 2)(${a.join(', ')}))`
+  );
+  // Alias compatibles TI-84/TI-89 (muestrales ÷(n-1)) — se procesan ANTES de stDevPop/varPop para evitar colisión case-insensitive
+  s = replaceFunctionCalls(s, 'stdDev', (a) => `stddevp(${a.join(', ')})`);
+  s = replaceFunctionCalls(
+    s,
+    'variance',
+    (a) => `((L_var -> variance(L_var)*size(L_var)/(size(L_var)-1))(${a.join(', ')}))`
+  );
+  // Comandos oficiales TI-Nspire CX CAS (muestral vs. poblacional)
+  s = replaceFunctionCalls(s, 'stDevSamp', (a) => `stddevp(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'stDevPop', (a) => `stddev(${a.join(', ')})`);
+  s = replaceFunctionCalls(
+    s,
+    'varSamp',
+    (a) => `((L_var -> variance(L_var)*size(L_var)/(size(L_var)-1))(${a.join(', ')}))`
+  );
+  s = replaceFunctionCalls(s, 'varPop', (a) => `variance(${a.join(', ')})`);
   s = replaceFunctionCalls(s, 'normPdf', (a) => {
     const [x, mu = '0', sigma = '1'] = a;
     return `normald(${mu}, ${sigma}, ${x})`;
@@ -1173,7 +1415,7 @@ function expandTIFunctions(input) {
   s = replaceFunctionCalls(s, 'newMat', (a) => `matrix(${a.join(', ')})`);
   s = replaceFunctionCalls(s, 'identity', (a) => `idn(${a.join(', ')})`);
   s = replaceFunctionCalls(s, 'transpose', (a) => `tran(${a.join(', ')})`);
-  s = replaceFunctionCalls(s, 'eigVl', (a) => `egvl(${a.join(', ')})`);
+  s = replaceFunctionCalls(s, 'eigVl', (a) => `[eigenvals(${a.join(', ')})]`);
   s = replaceFunctionCalls(s, 'eigVc', (a) => `egv(${a.join(', ')})`);
   s = replaceFunctionCalls(s, 'crossP', (a) => `cross(${a.join(', ')})`);
   s = replaceFunctionCalls(s, 'dotP', (a) => `dot(${a.join(', ')})`);
@@ -1225,11 +1467,9 @@ function transpileTISyntax(rawInput) {
     expr = `${stoMatch[2].trim()} := (${stoMatch[1].trim()})`;
   }
 
-  const pipeParts = splitTopLevelArgs(expr, '|');
-  if (pipeParts.length === 2) {
-    const baseExpr = pipeParts[0];
-    const conds = splitTopLevelArgs(pipeParts[1], ',');
-    expr = `subst(${baseExpr}, [${conds.join(',')}])`;
+  // Verificar protección de solo lectura de Ans ANTES de sustituir Ans por su valor
+  if (/^\s*ans(?:\s*\([^)]*\))?\s*:=/i.test(expr)) {
+    throw new Error('Ans es una variable automática de solo lectura.');
   }
 
   expr = expr
@@ -1250,13 +1490,54 @@ function transpileTISyntax(rawInput) {
     .replace(/(\d+(?:\.\d+)?)\s*ᴇ\s*([+-]?\d+)/g, '($1*10^($2))');
 
   if (currentAngleMode === 'RAD') {
-    expr = expr.replace(/(\d+(?:\.\d+)?|\([^)]+\))\s*°/g, '(($1)*pi/180)');
+    expr = replaceDegreeOperands(expr);
   } else {
     expr = expr.replace(/°/g, '');
   }
 
   expr = expr.replace(/\b(?:Ans|ans)\b/g, `(${lastAns})`);
-  expr = expandTIFunctions(expr);
+
+  // Operador "tal que" (|): sustituciones (x=3, y=4), filtrado de soluciones (solve(...) | x > 0) o suposiciones simbólicas
+  let tempAssumptions = null;
+  const pipeParts = splitTopLevelArgs(expr, '|');
+  if (pipeParts.length === 2) {
+    const baseExpanded = expandTIFunctions(pipeParts[0]);
+    const condRaw = expandTIFunctions(pipeParts[1]);
+    const commaConds = splitTopLevelArgs(condRaw, ',');
+    const hasInequality = /(?:<=|>=|!=|<|>)/.test(condRaw);
+
+    if (!hasInequality) {
+      const eqConds = [];
+      for (const c of commaConds) {
+        for (const sub of c.split(/\band\b/i)) {
+          const trimmed = sub.trim();
+          if (trimmed) eqConds.push(trimmed);
+        }
+      }
+      expr = `subst(${baseExpanded}, [${eqConds.join(', ')}])`;
+    } else {
+      const combinedCond = commaConds.map((c) => `(${c})`).join(' and ');
+      const isListBase =
+        /^(?:solve|csolve|fsolve|zeros|cZeros|proot)\s*\(/i.test(baseExpanded.trim()) ||
+        baseExpanded.trim().startsWith('[');
+      if (isListBase) {
+        const filterVar = detectDifferentialVar(combinedCond);
+        expr = `select(${filterVar} -> (${combinedCond}), ${baseExpanded})`;
+      } else {
+        const assumeConds = [];
+        for (const c of commaConds) {
+          for (const sub of c.split(/\band\b/i)) {
+            const trimmed = sub.trim();
+            if (trimmed) assumeConds.push(trimmed);
+          }
+        }
+        tempAssumptions = assumeConds;
+        expr = baseExpanded;
+      }
+    }
+  } else {
+    expr = expandTIFunctions(expr);
+  }
 
   let assignedSymbol = null;
   let isFunctionDef = false;
@@ -1275,6 +1556,7 @@ function transpileTISyntax(rawInput) {
     isDelVar: false,
     assignedSymbol,
     isFunctionDef,
+    tempAssumptions,
     giacExpr: expr
   };
 }
@@ -1373,9 +1655,9 @@ function cleanOutputMultiplicationDots(latexStr) {
   return s;
 }
 
-function giacExprToLatex(exprStr) {
+function giacExprToLatex(exprStr, preserveUnevaluated = false) {
   if (!exprStr) return '';
-  let rawLatex = caseval(`latex(${exprStr})`).replace(/;$/, '').trim();
+  let rawLatex = caseval(preserveUnevaluated ? `latex(quote(${exprStr}))` : `latex(${exprStr})`).replace(/;$/, '').trim();
   if (
     !rawLatex ||
     rawLatex === 'undef' ||
@@ -1383,15 +1665,21 @@ function giacExprToLatex(exprStr) {
     rawLatex.toLowerCase().startsWith('error') ||
     rawLatex.includes('syntax error')
   ) {
-    rawLatex = caseval(`latex(quote(${exprStr}))`).replace(/;$/, '').trim();
+    rawLatex = caseval(preserveUnevaluated ? `latex(${exprStr})` : `latex(quote(${exprStr}))`).replace(/;$/, '').trim();
   }
   let s = rawLatex;
   if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
     s = s.slice(1, -1);
   }
+  // Restaurar índice interno de sumatorias/productorias (idx_i_ -> i) y compatibilidad KaTeX (\mbox -> \text)
   s = s
-    .replace(/\\mathrm\{([a-zA-Z]+)\\_([a-zA-Z0-9]+)\}/g, '$1_{$2}')
-    .replace(/([a-zA-Z0-9])\\_([a-zA-Z0-9]+)/g, '$1_{$2}');
+    .replace(/\\mathrm\{idx\\_i\\_\}|idx\\_i\\_/g, 'i')
+    .replace(/\\mbox\s*\{/g, '\\text{');
+  s = s
+    .replace(/\\mathrm\{(?!order\\_size\b)([a-zA-Z]+)\\_([a-zA-Z0-9]+)\}/g, '$1_{$2}')
+    .replace(/(?!order\\_size\b)([a-zA-Z0-9])\\_([a-zA-Z0-9]+)/g, '$1_{$2}');
+  // Reagrupar \sqrt{n}\cdot\sqrt{\pi} -> \sqrt{n\pi} (para enteros positivos n, p. ej. normPdf)
+  s = s.replace(/\\sqrt\{(\d+)\}\s*(?:\\cdot\s*)?\\sqrt\{\\pi\s*\}/g, '\\sqrt{$1\\pi}');
   s = s.replace(/\\frac\{\(([^()]+)\)\}/g, '\\frac{$1}');
   s = normalizeGiacTrigPowers(s);
   s = cleanOutputMultiplicationDots(s);
@@ -1448,8 +1736,9 @@ self.onmessage = (event) => {
   }
 
   if (type === 'EVAL') {
+    const assumedVarsToPurge = [];
     try {
-      const { isDelVar, targetVars, assignedSymbol, isFunctionDef, giacExpr } = transpileTISyntax(expr);
+      const { isDelVar, targetVars, assignedSymbol, isFunctionDef, tempAssumptions, giacExpr } = transpileTISyntax(expr);
 
       if (isDelVar) {
         for (const v of targetVars) {
@@ -1498,7 +1787,23 @@ self.onmessage = (event) => {
         return;
       }
 
-      const SKIP_SIMPLIFY_RE = /^(?:factor|cfactor|partfrac|propfrac|expand|texpand|tcollect|rref|ref|egvl|egv|solve|csolve|nsolve|zeros|czeros|desolve|normald|studentd|chisquared)\s*\(/i;
+      if (tempAssumptions && tempAssumptions.length > 0) {
+        for (const cond of tempAssumptions) {
+          const condVarsRaw = caseval(`lname(${cond})`).replace(/;$/, '').trim();
+          const condVars = extractScalarItems(condVarsRaw).filter(
+            (v) => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(v) && !RESERVED_MATH_IDS.has(v)
+          );
+          for (const v of condVars) {
+            if (!userVariables.has(v) && !assumedVarsToPurge.includes(v)) {
+              assumedVarsToPurge.push(v);
+            }
+          }
+          caseval(`assume(${cond})`);
+        }
+      }
+
+      const SKIP_SIMPLIFY_RE = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\s*:=\s*\(?\s*)?(?:factor|cfactor|ifactor|canonical_form|convert\s*\(\s*taylor|taylor|series|partfrac|propfrac|expand|texpand|tcollect|rref|ref|egvl|egv|\[?\s*eigenvals|simult|solve|csolve|nsolve|zeros|czeros|desolve|select)\s*\(/i;
+      const skipSimplify = SKIP_SIMPLIFY_RE.test(giacExpr.trim());
       let rawGiacOut = caseval(giacExpr).replace(/;$/, '').trim();
 
       if (
@@ -1511,7 +1816,7 @@ self.onmessage = (event) => {
         throw new Error((rawGiacOut || 'Expresión indefinida').replace(/^GIAC_ERROR:\s*/i, ''));
       }
 
-      const cleanInitialOut = rawGiacOut.replace(/^list\[/, '[');
+      const cleanInitialOut = rawGiacOut.replace(/^(?:list|matrix)\[/, '[');
       if (forceApprox) {
         const approxStep = caseval(`regroup(evalf(${cleanInitialOut}))`).replace(/;$/, '').trim();
         if (
@@ -1523,7 +1828,7 @@ self.onmessage = (event) => {
         ) {
           rawGiacOut = approxStep;
         }
-      } else if (!SKIP_SIMPLIFY_RE.test(giacExpr.trim())) {
+      } else if (!skipSimplify) {
         const simplifiedStep = caseval(`simplify(${cleanInitialOut})`).replace(/;$/, '').trim();
         if (
           simplifiedStep &&
@@ -1536,13 +1841,13 @@ self.onmessage = (event) => {
         }
       }
 
-      const rawOutput = rawGiacOut.replace(/^list\[/, '[');
+      const rawOutput = rawGiacOut.replace(/^(?:list|matrix)\[/, '[');
       if (assignedSymbol) {
         caseval(`${assignedSymbol} := (${rawOutput})`);
       }
-      const exactLatex = giacExprToLatex(rawOutput);
+      const exactLatex = giacExprToLatex(rawOutput, skipSimplify && !forceApprox);
       const approxGiacOut = caseval(`regroup(evalf(${rawOutput}))`).replace(/;$/, '').trim();
-      const approxRaw = approxGiacOut.replace(/^list\[/, '[');
+      const approxRaw = approxGiacOut.replace(/^(?:list|matrix)\[/, '[');
       const approxLatex =
         approxRaw && !approxRaw.startsWith('GIAC_ERROR')
           ? giacExprToLatex(approxRaw)
@@ -1573,6 +1878,10 @@ self.onmessage = (event) => {
         inputLatex: inputLatex || expr,
         error: err.message || 'Error de evaluación simbólica'
       });
+    } finally {
+      for (const v of assumedVarsToPurge) {
+        caseval(`purge(${v})`);
+      }
     }
   }
 };
