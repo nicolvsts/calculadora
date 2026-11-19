@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.38';
+const WORKER_VERSION = 'v1.39';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -465,14 +465,22 @@ function latexToGiac(rawLatex) {
     .replace(/\\!/g, '')
     .replace(/\\ /g, ' ');
 
-  // Multiplicación implícita antes de funciones matemáticas y constantes (ej. x\sin(x) -> x*\sin(x), 2\pi -> 2*\pi)
-  // Se ignora si el prefijo es un comando TeX (como \int, \sum, \lim)
-  const fnTokenList = 'sin|cos|tan|csc|sec|cot|arcsin|arccos|arctan|asin|acos|atan|sinh|cosh|tanh|ln|log|exp|sqrt|pi|exponentialE|imaginaryI';
-  const implicitFnRegex = new RegExp('(\\\\?[a-zA-Z0-9_]+|\\))\\s*(\\\\(' + fnTokenList + ')\\b)', 'g');
+  // Multiplicación implícita antes de funciones matemáticas, operadores 2D y constantes (ej. x\sin(x) -> x*\sin(x), 2\pi -> 2*\pi, x\sum_{i=1} -> x*\sum_{i=1})
+  // Se ignora si el prefijo es un comando TeX (como \int, \sum, \lim). Se usa (?![a-zA-Z]) en vez de \b porque '_' es \w en regex (\log_, \sum_, \int_).
+  const fnTokenList = 'sin|cos|tan|csc|sec|cot|arcsin|arccos|arctan|asin|acos|atan|sinh|cosh|tanh|ln|log|exp|sqrt|sum|prod|lim|int|pi|exponentialE|imaginaryI';
+  const implicitFnRegex = new RegExp('(\\\\?[a-zA-Z0-9_]+|\\))\\s*(\\\\(' + fnTokenList + ')(?![a-zA-Z]))', 'g');
   s = s.replace(implicitFnRegex, (match, prefix, fnCmd) => {
     if (prefix.startsWith('\\')) return match;
     return prefix + '*' + fnCmd;
   });
+
+  // Multiplicación implícita entre constantes/griegas (\pi, \theta, \imaginaryI, ...) y funciones/operadores TeX
+  // Se ejecuta ANTES de quitar '\' a \sin, \cos, \ln, \log, \sqrt, \sum, \prod, \lim para evitar fusiones como \pisin o \pisum
+  const earlyAdjValueTexRe = new RegExp(
+    '(\\\\(?:(?:' + VALUE_TEX_CMD + '))(?![a-zA-Z]))\\s*(?=\\\\(?:' + VALUE_TEX_CMD + '|sin|cos|tan|csc|sec|cot|sinh|cosh|tanh|arcsin|arccos|arctan|asin|acos|atan|ln|log|exp|sqrt|sum|prod|lim|int|frac)(?![a-zA-Z]))',
+    'g'
+  );
+  s = s.replace(earlyAdjValueTexRe, '$1*');
 
   // Potencias sobre funciones trigonométricas/hiperbólicas/ln: \sin^{2}(x) -> (\sin(x))^{2} (excepto ^{-1} inversas)
   {
@@ -1788,13 +1796,17 @@ self.onmessage = (event) => {
       }
 
       if (tempAssumptions && tempAssumptions.length > 0) {
+        const condKeywordSkip = new Set(['and', 'or', 'not', 'xor', 'true', 'false']);
         for (const cond of tempAssumptions) {
-          const condVarsRaw = caseval(`lname(${cond})`).replace(/;$/, '').trim();
-          const condVars = extractScalarItems(condVarsRaw).filter(
-            (v) => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(v) && !RESERVED_MATH_IDS.has(v)
+          const condSymbols = (cond.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || []).filter(
+            (v) => !RESERVED_MATH_IDS.has(v) && !condKeywordSkip.has(v.toLowerCase())
           );
-          for (const v of condVars) {
-            if (!userVariables.has(v) && !assumedVarsToPurge.includes(v)) {
+          // No aplicar assume() si alguna variable de la condición ya tiene un valor guardado por el usuario
+          if (condSymbols.some((v) => userVariables.has(v))) {
+            continue;
+          }
+          for (const v of condSymbols) {
+            if (!assumedVarsToPurge.includes(v)) {
               assumedVarsToPurge.push(v);
             }
           }
