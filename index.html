@@ -315,6 +315,9 @@
       align-items: center;
       gap: 4px;
       flex-shrink: 0;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
       min-height: 44px;
       cursor: text;
     }
@@ -327,7 +330,11 @@
     }
 
     math-field#expr-input {
-      flex: 1;
+      display: block;
+      flex: 1 1 0;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
       color-scheme: only light;
       forced-color-adjust: none;
       border: 1px solid #94a3b8;
@@ -342,7 +349,7 @@
       user-select: text !important;
       -webkit-user-select: text !important;
       pointer-events: auto !important;
-      touch-action: manipulation;
+      touch-action: pan-x;
       --caret-color: #0284c7;
       --selection-background-color: #bae6fd;
       --selection-color: #0f172a;
@@ -885,7 +892,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.40</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.41</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1396,7 +1403,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.40';
+    const APP_VERSION = 'v1.41';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -1468,6 +1475,9 @@
       } else {
         mf.value = val;
       }
+      if (typeof scheduleScrollCaretIntoView === 'function') {
+        scheduleScrollCaretIntoView(true);
+      }
     }
 
     function updateEntryActiveState() {
@@ -1523,6 +1533,59 @@
       });
     }
 
+    let suppressCaretAutoScrollUntil = 0;
+
+    function getEntryScrollEl() {
+      return mf?.shadowRoot?.querySelector('.ML__content') || null;
+    }
+
+    function scrollCaretIntoEntryView(force = false) {
+      if (!force && Date.now() < suppressCaretAutoScrollUntil) return;
+      const scrollEl = getEntryScrollEl();
+      if (!scrollEl) return;
+      const maxScroll = scrollEl.scrollWidth - scrollEl.clientWidth;
+      if (maxScroll <= 1) {
+        if (scrollEl.scrollLeft !== 0) scrollEl.scrollLeft = 0;
+        return;
+      }
+
+      const caretEl =
+        scrollEl.querySelector('.ML__caret, .ML__text-caret, .ML__latex-caret') ||
+        scrollEl.querySelector('.ML__selected');
+
+      if (caretEl) {
+        const viewRect = scrollEl.getBoundingClientRect();
+        const caretRect = caretEl.getBoundingClientRect();
+        if (viewRect.width > 0 && (caretRect.width > 0 || caretRect.height > 0 || caretRect.left !== 0)) {
+          const margin = Math.min(28, Math.max(14, Math.floor(viewRect.width * 0.1)));
+          if (caretRect.right > viewRect.right - margin) {
+            const delta = caretRect.right - (viewRect.right - margin);
+            scrollEl.scrollLeft = Math.min(maxScroll, scrollEl.scrollLeft + delta);
+          } else if (caretRect.left < viewRect.left + margin) {
+            const delta = (viewRect.left + margin) - caretRect.left;
+            scrollEl.scrollLeft = Math.max(0, scrollEl.scrollLeft - delta);
+          }
+          return;
+        }
+      }
+
+      try {
+        if (typeof mf.executeCommand === 'function') {
+          mf.executeCommand('scrollIntoView');
+        }
+      } catch (_) {}
+    }
+
+    function scheduleScrollCaretIntoView(force = false) {
+      scrollCaretIntoEntryView(force);
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+          scrollCaretIntoEntryView(force);
+          requestAnimationFrame(() => scrollCaretIntoEntryView(force));
+        });
+      }
+    }
+
     function scheduleUpdateActiveIntegralPill() {
       updateActiveIntegralPill();
       if (typeof requestAnimationFrame === 'function') {
@@ -1558,8 +1621,14 @@
       if (!mf.__moveOutBound) {
         mf.__moveOutBound = true;
         mf.addEventListener('move-out', (e) => e.preventDefault());
-        mf.addEventListener('selection-change', scheduleUpdateActiveIntegralPill);
-        mf.addEventListener('input', scheduleUpdateActiveIntegralPill);
+        mf.addEventListener('selection-change', () => {
+          scheduleUpdateActiveIntegralPill();
+          scheduleScrollCaretIntoView();
+        });
+        mf.addEventListener('input', () => {
+          scheduleUpdateActiveIntegralPill();
+          scheduleScrollCaretIntoView(true);
+        });
         mf.addEventListener('focus', scheduleUpdateActiveIntegralPill);
       }
 
@@ -1592,6 +1661,28 @@
               --neutral-700: #616161;
               --neutral-800: #424242;
               --neutral-900: #212121;
+            }
+            .ML__container {
+              display: flex !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              min-width: 0 !important;
+              box-sizing: border-box !important;
+            }
+            .ML__content {
+              flex: 1 1 0 !important;
+              min-width: 0 !important;
+              max-width: 100% !important;
+              overflow-x: auto !important;
+              overflow-y: hidden !important;
+              scrollbar-width: none !important;
+              -webkit-overflow-scrolling: touch !important;
+              touch-action: pan-x !important;
+              scroll-behavior: auto !important;
+            }
+            .ML__content::-webkit-scrollbar {
+              display: none !important;
+              height: 0 !important;
             }
             :host, .ML__mathlive, .ML__content, .ML__keyboard-sink {
               user-select: text !important;
@@ -1635,6 +1726,7 @@
     mf.addEventListener('mount', initMathfield);
 
     // Al tocar cualquier parte de la barra de escritura en móvil o PC, seleccionarla de inmediato
+    // + desplazamiento horizontal manual con rueda del ratón (solo sobre #entry-bar) y con el dedo en táctil
     if (entryBarEl) {
       entryBarEl.addEventListener('pointerdown', () => {
         if (modalNav.isOpen) closeModal();
@@ -1643,8 +1735,75 @@
         updateEntryActiveState();
       });
       entryBarEl.addEventListener('click', () => {
+        if (Date.now() < suppressCaretAutoScrollUntil) return;
         focusEntryBar();
       });
+
+      // Rueda del ratón horizontal (solo cuando el puntero está sobre la barra de escritura)
+      entryBarEl.addEventListener('wheel', (e) => {
+        const scrollEl = getEntryScrollEl();
+        if (!scrollEl) return;
+        const maxScroll = scrollEl.scrollWidth - scrollEl.clientWidth;
+        if (maxScroll <= 1) return;
+        const unit = e.deltaMode === 1 ? 24 : (e.deltaMode === 2 ? scrollEl.clientWidth : 1);
+        const rawDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        if (!rawDelta) return;
+        e.preventDefault();
+        e.stopPropagation();
+        suppressCaretAutoScrollUntil = Date.now() + 180;
+        scrollEl.scrollLeft = Math.max(0, Math.min(maxScroll, scrollEl.scrollLeft + rawDelta * unit));
+      }, { passive: false, capture: true });
+
+      // Desplazamiento horizontal manual con el dedo (sin romper el toque rápido para posicionar el cursor)
+      let entryTouchPan = null;
+      entryBarEl.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'touch') return;
+        const scrollEl = getEntryScrollEl();
+        if (!scrollEl || scrollEl.scrollWidth <= scrollEl.clientWidth + 1) {
+          entryTouchPan = null;
+          return;
+        }
+        entryTouchPan = {
+          pointerId: e.pointerId,
+          startX: e.clientX,
+          startY: e.clientY,
+          startScrollLeft: scrollEl.scrollLeft,
+          dragging: false
+        };
+      }, { capture: true });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!entryTouchPan || e.pointerId !== entryTouchPan.pointerId) return;
+        const scrollEl = getEntryScrollEl();
+        if (!scrollEl) return;
+        const dx = e.clientX - entryTouchPan.startX;
+        const dy = e.clientY - entryTouchPan.startY;
+        if (!entryTouchPan.dragging && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+          entryTouchPan.dragging = true;
+        }
+        if (entryTouchPan.dragging) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          suppressCaretAutoScrollUntil = Date.now() + 260;
+          const maxScroll = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth);
+          scrollEl.scrollLeft = Math.max(0, Math.min(maxScroll, entryTouchPan.startScrollLeft - dx));
+        }
+      }, { passive: false, capture: true });
+
+      const endEntryTouchPan = (e) => {
+        if (!entryTouchPan || e.pointerId !== entryTouchPan.pointerId) return;
+        if (entryTouchPan.dragging) {
+          suppressCaretAutoScrollUntil = Date.now() + 260;
+          try {
+            if (mf._mathfield?.model && !mf._mathfield.model.selectionIsCollapsed) {
+              mf._mathfield.model.collapseSelection('forward');
+            }
+          } catch (_) {}
+        }
+        entryTouchPan = null;
+      };
+      window.addEventListener('pointerup', endEntryTouchPan, { capture: true });
+      window.addEventListener('pointercancel', endEntryTouchPan, { capture: true });
     }
 
     // Inicializar Web Worker dedicado con giac.wasm y verificación de versión anti-caché obsoleta
@@ -1941,6 +2100,9 @@
         }
         if (typeof scheduleUpdateActiveIntegralPill === 'function') {
           scheduleUpdateActiveIntegralPill();
+        }
+        if (typeof scheduleScrollCaretIntoView === 'function') {
+          scheduleScrollCaretIntoView(true);
         }
       }
     }
@@ -3307,6 +3469,9 @@
       } else if (typeof requestAnimationFrame === 'function' && typeof updateActiveIntegralPill === 'function') {
         requestAnimationFrame(updateActiveIntegralPill);
       }
+      if (typeof scheduleScrollCaretIntoView === 'function') {
+        scheduleScrollCaretIntoView(true);
+      }
     }
 
     function focusIntegralBranch(model, branch, edge = 'end') {
@@ -3976,6 +4141,7 @@
             mf.executeCommand('moveUp');
             if (mf.position !== beforePos) {
               focusEntryBar();
+              scheduleScrollCaretIntoView(true);
               return;
             }
           }
@@ -4012,6 +4178,7 @@
           focusEntryBar();
           if (typeof mf.executeCommand === 'function') {
             mf.executeCommand('moveDown');
+            scheduleScrollCaretIntoView(true);
           }
           return;
         }
@@ -4029,6 +4196,7 @@
           focusEntryBar();
           if (typeof mf.executeCommand === 'function') {
             mf.executeCommand('moveToPreviousChar');
+            scheduleScrollCaretIntoView(true);
           }
           return;
 
@@ -4045,6 +4213,7 @@
           focusEntryBar();
           if (typeof mf.executeCommand === 'function') {
             mf.executeCommand('moveToNextChar');
+            scheduleScrollCaretIntoView(true);
           }
           return;
 
@@ -4095,6 +4264,7 @@
             if (!tryIntegralBackspaceGuard() && typeof mf.executeCommand === 'function') {
               mf.executeCommand('deleteBackward');
             }
+            scheduleScrollCaretIntoView(true);
           }
           return;
 
@@ -4400,20 +4570,26 @@
           e.preventDefault();
           e.stopPropagation();
         }
+        scheduleScrollCaretIntoView(true);
       } else if (e.key === 'ArrowRight' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
         if (tryIntegralArrowNav('right')) {
           e.preventDefault();
           e.stopPropagation();
         }
+        scheduleScrollCaretIntoView(true);
       } else if (e.key === 'Backspace' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
         if (tryIntegralBackspaceGuard()) {
           e.preventDefault();
           e.stopPropagation();
         }
+        scheduleScrollCaretIntoView(true);
+      } else if (e.key === 'Home' || e.key === 'End' || e.key === 'Delete' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        scheduleScrollCaretIntoView(true);
       } else if (e.key === 'Tab') {
         e.preventDefault();
         e.stopPropagation();
         handleMathTabNav(!e.shiftKey);
+        scheduleScrollCaretIntoView(true);
         return;
       }
     }, true);
