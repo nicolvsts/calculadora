@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.41';
+const WORKER_VERSION = 'v1.42';
 
 self.postMessage({
   type: 'WORKER_INIT',
@@ -1385,6 +1385,10 @@ function expandTIFunctions(input) {
   s = replaceFunctionCalls(s, 'chi2Cdf', (a) => {
     const [low, up, df] = a;
     return `evalf(chisquared_cdf(${df}, ${up}) - chisquared_cdf(${df}, ${low}))`;
+  });
+  s = replaceFunctionCalls(s, 'invChi2', (a) => {
+    const [area, df] = a;
+    return `evalf(chisquared_icdf(${df}, ${area}))`;
   });
   s = replaceFunctionCalls(s, 'binomPdf', (a) => {
     const [n, p, x] = a;

@@ -892,7 +892,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.41</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.42</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1403,7 +1403,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.41';
+    const APP_VERSION = 'v1.42';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -2658,9 +2658,19 @@
           { key: 'df', label: 'Grados de libertad (gl):', defaultVal: '', placeholder: 'gl > 0' }
         ]
       },
-      binomPdf: {
+      invChi2: {
         shortcut: '9',
-        menuLabel: '9: fdP binomial...',
+        menuLabel: '9: χ² inversa...',
+        title: 'χ² inversa (invChi2)',
+        fnName: 'invChi2',
+        fields: [
+          { key: 'area', label: 'Área:', defaultVal: '', placeholder: '0 < área < 1' },
+          { key: 'df', label: 'Grados de libertad (gl):', defaultVal: '', placeholder: 'gl > 0' }
+        ]
+      },
+      binomPdf: {
+        shortcut: 'a',
+        menuLabel: 'A: fdP binomial...',
         title: 'fdP binomial (binomPdf)',
         fnName: 'binomPdf',
         fields: [
@@ -2670,8 +2680,8 @@
         ]
       },
       binomCdf: {
-        shortcut: 'a',
-        menuLabel: 'A: fdA binomial...',
+        shortcut: 'b',
+        menuLabel: 'B: fdA binomial...',
         title: 'fdA binomial (binomCdf)',
         fnName: 'binomCdf',
         fields: [
@@ -2682,8 +2692,8 @@
         ]
       },
       poissPdf: {
-        shortcut: 'b',
-        menuLabel: 'B: fdP de Poisson...',
+        shortcut: 'c',
+        menuLabel: 'C: fdP de Poisson...',
         title: 'fdP de Poisson (poissPdf)',
         fnName: 'poissPdf',
         fields: [
@@ -2692,8 +2702,8 @@
         ]
       },
       poissCdf: {
-        shortcut: 'c',
-        menuLabel: 'C: fdA de Poisson...',
+        shortcut: 'd',
+        menuLabel: 'D: fdA de Poisson...',
         title: 'fdA de Poisson (poissCdf)',
         fnName: 'poissCdf',
         fields: [
@@ -2707,7 +2717,7 @@
     const DISTRIBUTION_ORDER = [
       'normPdf', 'normCdf', 'invNorm',
       'tPdf', 'tCdf', 'invT',
-      'chi2Pdf', 'chi2Cdf',
+      'chi2Pdf', 'chi2Cdf', 'invChi2',
       'binomPdf', 'binomCdf',
       'poissPdf', 'poissCdf'
     ];
@@ -3148,6 +3158,7 @@
             { name: 'ifactor(n)', latex: '\\mathrm{ifactor}\\left(#?\\right)', desc: 'Factores primos de entero' },
             { name: 'impDiff(eq, x, y)', latex: '\\mathrm{impDiff}\\left(#?=#?, x, y\\right)', desc: 'Derivación implícita' },
             { name: 'integrate (Integral 2D)', latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}', desc: 'Integral definida 2D' },
+            { name: 'invChi2(area, df)', distKey: 'invChi2', latex: '\\mathrm{invChi2}\\left(#?, #?\\right)', desc: 'Inversa Chi-cuadrado' },
             { name: 'invNorm(area, μ, σ)', distKey: 'invNorm', latex: '\\mathrm{invNorm}\\left(#?, 0, 1\\right)', desc: 'Inversa Normal' },
             { name: 'invT(area, df)', distKey: 'invT', latex: '\\mathrm{invT}\\left(#?, #?\\right)', desc: 'Inversa t-Student' },
             { name: 'lcm(a, b)', latex: '\\mathrm{lcm}\\left(#?, #?\\right)', desc: 'Mínimo común múltiplo' },
