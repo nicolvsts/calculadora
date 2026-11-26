@@ -887,7 +887,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.43</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.43.1</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -1398,7 +1398,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.43';
+    const APP_VERSION = 'v1.43.1';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -2438,7 +2438,7 @@
       let updateUI = () => {};
 
       openModal(
-        'Matriz n×m (Filas × Columnas)',
+        'Matriz n×m',
         (body) => {
           const list = document.createElement('div');
           list.className = 'menu-list matrix-menu';
@@ -2756,7 +2756,7 @@
       };
 
       openModal(
-        `${def.title} (◀ Volver)`,
+        def.title,
         (body) => {
           const list = document.createElement('div');
           list.className = 'menu-list matrix-menu dist-menu';
@@ -2953,7 +2953,7 @@
     // Submenú anidado "4: Distribuciones" dentro de "5: Probabilidad"
     function openDistributionsSubmenu(onBackFn = null) {
       openModal(
-        '4: Distribuciones (◀ Volver)',
+        '4: Distribuciones',
         (body) => {
           const list = document.createElement('div');
           list.className = 'menu-list';
@@ -2980,7 +2980,7 @@
 
     // 1. Paleta Trigonométrica (trig▸)
     function openTrigPalette() {
-      openModal('Trigonometría (trig▸)', (body) => {
+      openModal('Trigonometría', (body) => {
         renderGridPalette(body, [
           { label: 'sin', katexPreview: '\\sin(\\square)', latex: '\\sin\\left(#?\\right)' },
           { label: 'cos', katexPreview: '\\cos(\\square)', latex: '\\cos\\left(#?\\right)' },
@@ -3000,7 +3000,7 @@
 
     // 2. Paleta de Relaciones y Restricción (ctrl + =)
     function openRelationsPalette() {
-      openModal('Relaciones y Restricción (| ≠ ≥)', (body) => {
+      openModal('Relaciones y Restricción', (body) => {
         renderGridPalette(body, [
           { label: '=', katexPreview: '=', latex: '=' },
           { label: '≠', katexPreview: '\\neq', latex: '\\neq ' },
@@ -3015,7 +3015,7 @@
 
     // 3. Paleta de Constantes (π▸)
     function openPiPalette() {
-      openModal('Constantes y Ángulos (π▸)', (body) => {
+      openModal('Constantes y Ángulos', (body) => {
         renderGridPalette(body, [
           { label: 'π', katexPreview: '\\pi', latex: '\\pi ' },
           { label: '𝑖', katexPreview: 'i', latex: '\\imaginaryI ' },
@@ -3029,7 +3029,7 @@
 
     // 4. Paleta de Puntuación (?!▸)
     function openPunctPalette() {
-      openModal('Puntuación y Operadores (?!▸)', (body) => {
+      openModal('Puntuación y Operadores', (body) => {
         renderGridPalette(body, [
           { label: '!', katexPreview: 'n!', latex: '!' },
           { label: 'Subíndice', katexPreview: 'x_{\\square}', latex: '_{#?}' },
@@ -3043,7 +3043,7 @@
 
     // 5. Paleta Visual de Plantillas Matemáticas 2D con Cajas Editables (|□|{□)
     function openTemplatesPalette() {
-      openModal('Plantillas Matemáticas 2D (|□|{□)', (body) => {
+      openModal('Plantillas Matemáticas 2D', (body) => {
         renderGridPalette(body, [
           { label: 'a/b', katexPreview: '\\frac{\\square}{\\square}', latex: '\\frac{#0}{#?}' },
           { label: 'xⁿ', katexPreview: '\\square^{\\square}', latex: '^{#?}' },
@@ -3069,7 +3069,7 @@
     // 6. Catálogo Oficial (📖) y Paleta de Símbolos (∞β°)
     function openCatalogModal(initialTab = 'CAT') {
       openModal(
-        initialTab === 'SYM' ? 'Paleta de Símbolos (∞β°) [◀ Comandos]' : 'Catálogo TI-Nspire CAS (📖) [▶ Símbolos]',
+        initialTab === 'SYM' ? 'Paleta de Símbolos' : 'Catálogo TI-Nspire CAS',
         (body) => {
           const tabBar = document.createElement('div');
           tabBar.style.display = 'flex';
@@ -3216,10 +3216,10 @@
         title: '1: Acciones',
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M9.5 1.5L3.5 9h4.2l-1.2 5.5L12.5 7H8.3l1.2-5.5z"/></svg>',
         items: [
-          { shortcut: '1', label: '1: Define', latex: '\\mathrm{Define}\\ f\\left(x\\right)=#?' },
-          { shortcut: '2', label: '2: Delete Variable (DelVar)', latex: '\\mathrm{DelVar}\\ #?' },
-          { shortcut: '3', label: '3: Clear a–z', action: () => casWorker?.postMessage({ id: ++reqCounter, type: 'EVAL', expr: 'ClearAZ', inputLatex: '\\text{Clear a–z}' }) },
-          { shortcut: '4', label: '4: Clear History / Reset CAS', action: () => casWorker?.postMessage({ id: ++reqCounter, type: 'RESET_NAMESPACE' }) }
+          { shortcut: '1', label: '1: Definir', latex: '\\mathrm{Define}\\ f\\left(x\\right)=#?' },
+          { shortcut: '2', label: '2: Borrar variable', latex: '\\mathrm{DelVar}\\ #?' },
+          { shortcut: '3', label: '3: Borrar a–z', action: () => casWorker?.postMessage({ id: ++reqCounter, type: 'EVAL', expr: 'ClearAZ', inputLatex: '\\text{Clear a–z}' }) },
+          { shortcut: '4', label: '4: Limpiar historial y memoria', action: () => casWorker?.postMessage({ id: ++reqCounter, type: 'RESET_NAMESPACE' }) }
         ]
       },
       {
@@ -3227,15 +3227,15 @@
         title: '2: Número',
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="1.2" y="3" width="13.6" height="10" rx="2"/><text x="8" y="10.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">123</text></svg>',
         items: [
-          { shortcut: '1', label: '1: Convert to Decimal (approx)', latex: '\\mathrm{approx}\\left(#?\\right)' },
-          { shortcut: '2', label: '2: Approximate to Fraction (exact)', latex: '\\mathrm{exact}\\left(#?\\right)' },
-          { shortcut: '3', label: '3: Factor Integer (ifactor)', latex: '\\mathrm{ifactor}\\left(#?\\right)' },
-          { shortcut: '4', label: '4: Least Common Multiple (lcm)', latex: '\\mathrm{lcm}\\left(#?, #?\\right)' },
-          { shortcut: '5', label: '5: Greatest Common Divisor (gcd)', latex: '\\mathrm{gcd}\\left(#?, #?\\right)' },
-          { shortcut: '6', label: '6: Remainder (irem)', latex: '\\mathrm{irem}\\left(#?, #?\\right)' },
-          { shortcut: '7', label: '7: Proper Fraction / Partial (propFrac)', latex: '\\mathrm{propFrac}\\left(#?\\right)' },
-          { shortcut: '8', label: '8: Complex Conjugate (conj)', latex: '\\mathrm{conj}\\left(#?\\right)' },
-          { shortcut: '9', label: '9: Real Part (real)', latex: '\\mathrm{real}\\left(#?\\right)' }
+          { shortcut: '1', label: '1: Convertir a decimal', latex: '\\mathrm{approx}\\left(#?\\right)' },
+          { shortcut: '2', label: '2: Aproximar a fracción', latex: '\\mathrm{exact}\\left(#?\\right)' },
+          { shortcut: '3', label: '3: Factorizar entero', latex: '\\mathrm{ifactor}\\left(#?\\right)' },
+          { shortcut: '4', label: '4: Mínimo común múltiplo', latex: '\\mathrm{lcm}\\left(#?, #?\\right)' },
+          { shortcut: '5', label: '5: Máximo común divisor', latex: '\\mathrm{gcd}\\left(#?, #?\\right)' },
+          { shortcut: '6', label: '6: Resto', latex: '\\mathrm{irem}\\left(#?, #?\\right)' },
+          { shortcut: '7', label: '7: Fracciones parciales', latex: '\\mathrm{propFrac}\\left(#?\\right)' },
+          { shortcut: '8', label: '8: Conjugado complejo', latex: '\\mathrm{conj}\\left(#?\\right)' },
+          { shortcut: '9', label: '9: Parte real', latex: '\\mathrm{real}\\left(#?\\right)' }
         ]
       },
       {
@@ -3244,15 +3244,15 @@
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 3L7.5 13M7.5 3L1.5 13"/><line x1="9.8" y1="6.2" x2="14.8" y2="6.2"/><line x1="9.8" y1="9.8" x2="14.8" y2="9.8"/></svg>',
         items: [
           { shortcut: '1', label: '1: Solve', latex: '\\mathrm{solve}\\left(#?, #?\\right)' },
-          { shortcut: '2', label: '2: Factor', latex: '\\mathrm{factor}\\left(#?\\right)' },
-          { shortcut: '3', label: '3: Expand', latex: '\\mathrm{expand}\\left(#?\\right)' },
-          { shortcut: '4', label: '4: Zeros', latex: '\\mathrm{zeros}\\left(#?, x\\right)' },
-          { shortcut: '5', label: '5: Complete the Square', latex: '\\mathrm{completeSquare}\\left(#?, x\\right)' },
-          { shortcut: '6', label: '6: Numerical Solve (nSolve)', latex: '\\mathrm{nSolve}\\left(#?, #?\\right)' },
-          { shortcut: '7', label: '7: Solve System of Equations (2×2)', latex: '\\mathrm{solve}\\left(\\left[#?=#?, #?=#?\\right], \\left[x, y\\right]\\right)' },
-          { shortcut: '8', label: '8: Complex Solve (cSolve)', latex: '\\mathrm{cSolve}\\left(#?, #?\\right)' },
-          { shortcut: '9', label: '9: Complex Factor (cFactor)', latex: '\\mathrm{cFactor}\\left(#?\\right)' },
-          { shortcut: 'a', label: 'A: Complex Zeros (cZeros)', latex: '\\mathrm{cZeros}\\left(#?, x\\right)' }
+          { shortcut: '2', label: '2: Factorizar', latex: '\\mathrm{factor}\\left(#?\\right)' },
+          { shortcut: '3', label: '3: Expandir', latex: '\\mathrm{expand}\\left(#?\\right)' },
+          { shortcut: '4', label: '4: Ceros', latex: '\\mathrm{zeros}\\left(#?, x\\right)' },
+          { shortcut: '5', label: '5: Completar el cuadrado', latex: '\\mathrm{completeSquare}\\left(#?, x\\right)' },
+          { shortcut: '6', label: '6: Resolución numérica', latex: '\\mathrm{nSolve}\\left(#?, #?\\right)' },
+          { shortcut: '7', label: '7: Sistema de ecuaciones 2×2', latex: '\\mathrm{solve}\\left(\\left[#?=#?, #?=#?\\right], \\left[x, y\\right]\\right)' },
+          { shortcut: '8', label: '8: Resolución compleja', latex: '\\mathrm{cSolve}\\left(#?, #?\\right)' },
+          { shortcut: '9', label: '9: Factorización compleja', latex: '\\mathrm{cFactor}\\left(#?\\right)' },
+          { shortcut: 'a', label: 'A: Ceros complejos', latex: '\\mathrm{cZeros}\\left(#?, x\\right)' }
         ]
       },
       {
@@ -3260,16 +3260,16 @@
         title: '4: Cálculo',
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M11 2.8c-.4-.7-1.4-.9-2-.2-.5.6-.7 1.7-.9 4l-.4 3.1c-.2 2.1-.4 3-.9 3.6-.6.7-1.6.5-2-.2"/></svg>',
         items: [
-          { shortcut: '1', label: '1: Derivative (Plantilla 2D d/dx)', latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)' },
-          { shortcut: '2', label: '2: n-th Derivative (Plantilla 2D dⁿ/dxⁿ)', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
-          { shortcut: '3', label: '3: Indefinite Integral (Plantilla 2D ∫)', latex: '\\int \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}' },
-          { shortcut: '4', label: '4: Definite Integral (Plantilla 2D ∫ₐᵇ)', latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}' },
-          { shortcut: '5', label: '5: Limit (Plantilla 2D lim)', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
-          { shortcut: '6', label: '6: Sum (Plantilla 2D ∑)', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
-          { shortcut: '7', label: '7: Product (Plantilla 2D ∏)', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
-          { shortcut: '8', label: '8: Taylor Polynomial', latex: '\\mathrm{taylor}\\left(#?, x, 5, 0\\right)' },
-          { shortcut: '9', label: '9: Differential Equation Solver (deSolve)', latex: "\\mathrm{deSolve}\\left(y'=#?, x, y\\right)" },
-          { shortcut: 'a', label: 'A: Implicit Differentiation (impDiff)', latex: '\\mathrm{impDiff}\\left(#?=#?, x, y\\right)' }
+          { shortcut: '1', label: '1: Derivada', latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)' },
+          { shortcut: '2', label: '2: Derivada n-ésima', latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
+          { shortcut: '3', label: '3: Integral indefinida', latex: '\\int \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}' },
+          { shortcut: '4', label: '4: Integral definida', latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}' },
+          { shortcut: '5', label: '5: Límite', latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
+          { shortcut: '6', label: '6: Sumatoria', latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
+          { shortcut: '7', label: '7: Productoria', latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
+          { shortcut: '8', label: '8: Polinomio de Taylor', latex: '\\mathrm{taylor}\\left(#?, x, 5, 0\\right)' },
+          { shortcut: '9', label: '9: Ecuación diferencial', latex: "\\mathrm{deSolve}\\left(y'=#?, x, y\\right)" },
+          { shortcut: 'a', label: 'A: Derivación implícita', latex: '\\mathrm{impDiff}\\left(#?=#?, x, y\\right)' }
         ]
       },
       {
@@ -3277,10 +3277,10 @@
         title: '5: Probabilidad',
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2.3"/><circle cx="5.2" cy="5.2" r="1.05" fill="currentColor" stroke="none"/><circle cx="10.8" cy="5.2" r="1.05" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.05" fill="currentColor" stroke="none"/><circle cx="5.2" cy="10.8" r="1.05" fill="currentColor" stroke="none"/><circle cx="10.8" cy="10.8" r="1.05" fill="currentColor" stroke="none"/></svg>',
         items: [
-          { shortcut: '1', label: '1: Factorial (!)', latex: '!' },
-          { shortcut: '2', label: '2: Permutations (nPr)', latex: '\\mathrm{nPr}\\left(#?, #?\\right)' },
-          { shortcut: '3', label: '3: Combinations (nCr)', latex: '\\mathrm{nCr}\\left(#?, #?\\right)' },
-          { shortcut: '4', label: '4: Distribuciones (Distributions)', hasSubmenu: true, keepModalOpen: true, action: () => openDistributionsSubmenu(() => openCategorySubmenu(4)) }
+          { shortcut: '1', label: '1: Factorial', latex: '!' },
+          { shortcut: '2', label: '2: Permutaciones', latex: '\\mathrm{nPr}\\left(#?, #?\\right)' },
+          { shortcut: '3', label: '3: Combinaciones', latex: '\\mathrm{nCr}\\left(#?, #?\\right)' },
+          { shortcut: '4', label: '4: Distribuciones', hasSubmenu: true, keepModalOpen: true, action: () => openDistributionsSubmenu(() => openCategorySubmenu(4)) }
         ]
       },
       {
@@ -3288,12 +3288,12 @@
         title: '6: Estadística',
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="2" y="12.5" width="12" height="1.4" rx="0.5"/><rect x="3" y="7.5" width="2.4" height="4.5" rx="0.5"/><rect x="6.8" y="3.2" width="2.4" height="8.8" rx="0.5"/><rect x="10.6" y="5.5" width="2.4" height="6.5" rx="0.5"/></svg>',
         items: [
-          { shortcut: '1', label: '1: Mean (Media)', latex: '\\mathrm{mean}\\left(\\left[#?, #?\\right]\\right)' },
-          { shortcut: '2', label: '2: Median (Mediana)', latex: '\\mathrm{median}\\left(\\left[#?, #?\\right]\\right)' },
-          { shortcut: '3', label: '3: Sample Std. Dev. (stDevSamp)', latex: '\\mathrm{stDevSamp}\\left(\\left[#?, #?\\right]\\right)' },
-          { shortcut: '4', label: '4: Population Std. Dev. (stDevPop)', latex: '\\mathrm{stDevPop}\\left(\\left[#?, #?\\right]\\right)' },
-          { shortcut: '5', label: '5: Sample Variance (varSamp)', latex: '\\mathrm{varSamp}\\left(\\left[#?, #?\\right]\\right)' },
-          { shortcut: '6', label: '6: Population Variance (varPop)', latex: '\\mathrm{varPop}\\left(\\left[#?, #?\\right]\\right)' }
+          { shortcut: '1', label: '1: Media', latex: '\\mathrm{mean}\\left(\\left[#?, #?\\right]\\right)' },
+          { shortcut: '2', label: '2: Mediana', latex: '\\mathrm{median}\\left(\\left[#?, #?\\right]\\right)' },
+          { shortcut: '3', label: '3: Desv. estándar muestral', latex: '\\mathrm{stDevSamp}\\left(\\left[#?, #?\\right]\\right)' },
+          { shortcut: '4', label: '4: Desv. estándar poblacional', latex: '\\mathrm{stDevPop}\\left(\\left[#?, #?\\right]\\right)' },
+          { shortcut: '5', label: '5: Varianza muestral', latex: '\\mathrm{varSamp}\\left(\\left[#?, #?\\right]\\right)' },
+          { shortcut: '6', label: '6: Varianza poblacional', latex: '\\mathrm{varPop}\\left(\\left[#?, #?\\right]\\right)' }
         ]
       },
       {
@@ -3302,21 +3302,21 @@
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 2.5H2.5v11h2M11.5 2.5h2v11h-2"/><circle cx="6" cy="5.7" r="1.05" fill="currentColor" stroke="none"/><circle cx="10" cy="5.7" r="1.05" fill="currentColor" stroke="none"/><circle cx="6" cy="10.3" r="1.05" fill="currentColor" stroke="none"/><circle cx="10" cy="10.3" r="1.05" fill="currentColor" stroke="none"/></svg>',
         items: [
           { shortcut: '1', label: '1: Matriz n×m', keepModalOpen: true, action: () => openCustomMatrixModal(() => openCategorySubmenu(6)) },
-          { shortcut: '2', label: '2: Identity Matrix (identity)', latex: '\\mathrm{identity}\\left(3\\right)' },
-          { shortcut: '3', label: '3: Transpose (Aᵀ)', latex: '\\mathrm{transpose}\\left(#?\\right)' },
-          { shortcut: '4', label: '4: Determinant (det)', latex: '\\mathrm{det}\\left(#?\\right)' },
-          { shortcut: '5', label: '5: Row-Echelon Form (ref)', latex: '\\mathrm{ref}\\left(#?\\right)' },
-          { shortcut: '6', label: '6: Reduced Row-Echelon Form (rref)', latex: '\\mathrm{rref}\\left(#?\\right)' },
-          { shortcut: '7', label: '7: Eigenvalues (eigVl)', latex: '\\mathrm{eigVl}\\left(#?\\right)' },
-          { shortcut: '8', label: '8: Eigenvectors (eigVc)', latex: '\\mathrm{eigVc}\\left(#?\\right)' },
-          { shortcut: '9', label: '9: Dot Product (dotP)', latex: '\\mathrm{dotP}\\left(\\left[#?, #?\\right], \\left[#?, #?\\right]\\right)' },
-          { shortcut: 'a', label: 'A: Cross Product (crossP)', latex: '\\mathrm{crossP}\\left(\\left[#?, #?, #?\\right], \\left[#?, #?, #?\\right]\\right)' }
+          { shortcut: '2', label: '2: Matriz identidad', latex: '\\mathrm{identity}\\left(3\\right)' },
+          { shortcut: '3', label: '3: Traspuesta', latex: '\\mathrm{transpose}\\left(#?\\right)' },
+          { shortcut: '4', label: '4: Determinante', latex: '\\mathrm{det}\\left(#?\\right)' },
+          { shortcut: '5', label: '5: Forma escalonada', latex: '\\mathrm{ref}\\left(#?\\right)' },
+          { shortcut: '6', label: '6: Forma escalonada reducida', latex: '\\mathrm{rref}\\left(#?\\right)' },
+          { shortcut: '7', label: '7: Autovalores', latex: '\\mathrm{eigVl}\\left(#?\\right)' },
+          { shortcut: '8', label: '8: Autovectores', latex: '\\mathrm{eigVc}\\left(#?\\right)' },
+          { shortcut: '9', label: '9: Producto escalar', latex: '\\mathrm{dotP}\\left(\\left[#?, #?\\right], \\left[#?, #?\\right]\\right)' },
+          { shortcut: 'a', label: 'A: Producto cruz', latex: '\\mathrm{crossP}\\left(\\left[#?, #?, #?\\right], \\left[#?, #?, #?\\right]\\right)' }
         ]
       }
     ];
 
     function openMainMenuModal(initialCategoryIdx = 0) {
-      openModal('Menú de Calculadora CAS (▲/▼/▶/enter)', (body) => {
+      openModal('Menú de Calculadora CAS', (body) => {
         const list = document.createElement('div');
         list.className = 'menu-list';
         TI_CAS_MENU.forEach((cat, catIdx) => {
@@ -3335,7 +3335,7 @@
     function openCategorySubmenu(catIdx) {
       const cat = TI_CAS_MENU[catIdx];
       openModal(
-        `${cat.title} (◀ Volver)`,
+        cat.title,
         (subBody) => {
           const subList = document.createElement('div');
           subList.className = 'menu-list';
@@ -3369,7 +3369,7 @@
 
     // 8. Menú de Variables en Memoria (var)
     function openVarsModal() {
-      openModal('Variables en Memoria (var)', (body) => {
+      openModal('Variables en Memoria', (body) => {
         if (!cachedVariables || cachedVariables.length === 0) {
           body.innerHTML = '<div style="padding:8px; color:#64748b;">No hay variables definidas en memoria.<br/>Usa <code>:=</code> o <code>ctrl + var (sto→)</code> para almacenar valores o funciones.</div>';
           return;
