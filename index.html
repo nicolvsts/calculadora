@@ -73,6 +73,7 @@
     .keypad-chassis,
     .lcd-statusbar,
     .modal-header,
+    .help-popover-header,
     .entry-prompt,
     .approx-chip {
       user-select: none;
@@ -441,6 +442,127 @@
       overflow-y: auto;
       padding: 5px;
       font-size: 0.78rem;
+    }
+
+    /* Ventanita Emergente de Ayuda (ctrl + opción final del menú CAS) */
+    #help-popover-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.22);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+      z-index: 40;
+    }
+
+    #help-popover-overlay.open {
+      display: flex;
+    }
+
+    .help-popover-card {
+      width: 92%;
+      max-height: 86%;
+      background: #e0f2fe;
+      border: 1.5px solid #0284c7;
+      border-radius: 7px;
+      box-shadow: 0 10px 24px rgba(12, 74, 110, 0.28);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      color: #0c4a6e;
+    }
+
+    .help-popover-header {
+      background: #bae6fd;
+      border-bottom: 1px solid #7dd3fc;
+      color: #0c4a6e;
+      padding: 5px 8px;
+      font-size: 0.74rem;
+      font-weight: 800;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .help-popover-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .help-popover-title .menu-cat-icon {
+      color: #0369a1;
+    }
+
+    .help-popover-close {
+      background: rgba(255, 255, 255, 0.65);
+      color: #0369a1;
+      border: 1px solid #7dd3fc;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 0.66rem;
+      font-weight: 800;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .help-popover-close:hover {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #0284c7;
+    }
+
+    .help-popover-body {
+      padding: 7px 9px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.73rem;
+      line-height: 1.35;
+      color: #0f172a;
+    }
+
+    .help-popover-desc {
+      margin: 0;
+      font-weight: 500;
+    }
+
+    .help-popover-section {
+      background: rgba(255, 255, 255, 0.74);
+      border: 1px solid #bae6fd;
+      border-radius: 5px;
+      padding: 4px 7px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .help-popover-label {
+      font-size: 0.61rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #0369a1;
+    }
+
+    .help-popover-math,
+    .help-popover-example {
+      color: #0f172a;
+      overflow-x: auto;
+      padding: 1px 0;
+    }
+
+    .help-popover-math {
+      font-size: 0.8rem;
+    }
+
+    .help-popover-example {
+      font-size: 0.72rem;
     }
 
     .palette-grid {
@@ -887,7 +1009,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.43.3</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.44</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -912,6 +1034,20 @@
             <button class="modal-close" id="modal-close-btn">esc ✕</button>
           </div>
           <div class="modal-body" id="modal-body"></div>
+
+          <!-- Ventanita Emergente de Ayuda (ctrl + opción final) -->
+          <div id="help-popover-overlay" role="dialog" aria-modal="true" aria-labelledby="help-popover-title-text">
+            <div class="help-popover-card">
+              <div class="help-popover-header">
+                <span class="help-popover-title">
+                  <span id="help-popover-icon"></span>
+                  <span id="help-popover-title-text">Ayuda</span>
+                </span>
+                <button class="help-popover-close" id="help-popover-close-btn" type="button">esc ✕</button>
+              </div>
+              <div class="help-popover-body" id="help-popover-body"></div>
+            </div>
+          </div>
         </div>
 
         <!-- Línea de Edición Bidimensional Interactiva (<math-field>) -->
@@ -1398,7 +1534,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.43.3';
+    const APP_VERSION = 'v1.44';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
@@ -1428,6 +1564,12 @@
     const modalEl = document.getElementById('lcd-modal');
     const modalTitleEl = document.getElementById('modal-title');
     const modalBodyEl = document.getElementById('modal-body');
+    const helpOverlayEl = document.getElementById('help-popover-overlay');
+    const helpIconEl = document.getElementById('help-popover-icon');
+    const helpTitleEl = document.getElementById('help-popover-title-text');
+    const helpBodyEl = document.getElementById('help-popover-body');
+    const helpCloseBtn = document.getElementById('help-popover-close-btn');
+    let isHelpPopoverOpen = false;
     const angleIndicator = document.getElementById('angle-indicator');
     const ctrlIndicator = document.getElementById('ctrl-indicator');
     const shiftIndicator = document.getElementById('shift-indicator');
@@ -2272,7 +2414,76 @@
     // =========================================================
     // MOTOR DE MENÚS Y PALETAS CON NAVEGACIÓN POR FLECHAS
     // =========================================================
+    function openHelpPopover(helpCfg) {
+      if (!helpCfg || !modalNav.isOpen) return;
+      const cleanTitle = String(helpCfg.title || 'Ayuda')
+        .replace(/^[0-9A-Za-z]:\s*/, '')
+        .replace(/\.{3}$/, '');
+      helpIconEl.innerHTML = helpCfg.iconSvg || '';
+      helpTitleEl.textContent = cleanTitle;
+      helpBodyEl.innerHTML = '';
+
+      if (helpCfg.desc) {
+        const p = document.createElement('p');
+        p.className = 'help-popover-desc';
+        p.textContent = helpCfg.desc;
+        helpBodyEl.appendChild(p);
+      }
+
+      if (helpCfg.syntaxLatex || helpCfg.syntaxText) {
+        const sec = document.createElement('div');
+        sec.className = 'help-popover-section';
+        const lbl = document.createElement('span');
+        lbl.className = 'help-popover-label';
+        lbl.textContent = helpCfg.syntaxLabel || 'Plantilla / sintaxis';
+        sec.appendChild(lbl);
+        const val = document.createElement('div');
+        val.className = 'help-popover-math';
+        if (helpCfg.syntaxLatex && window.katex) {
+          katex.render(helpCfg.syntaxLatex, val, { macros: KATEX_MACROS, throwOnError: false, displayMode: false });
+        } else {
+          val.textContent = helpCfg.syntaxText || helpCfg.syntaxLatex || '';
+        }
+        sec.appendChild(val);
+        helpBodyEl.appendChild(sec);
+      }
+
+      if (helpCfg.exampleLatex || helpCfg.exampleText) {
+        const sec = document.createElement('div');
+        sec.className = 'help-popover-section';
+        const lbl = document.createElement('span');
+        lbl.className = 'help-popover-label';
+        lbl.textContent = 'Ejemplo';
+        sec.appendChild(lbl);
+        const val = document.createElement('div');
+        val.className = 'help-popover-example';
+        if (helpCfg.exampleLatex && window.katex) {
+          katex.render(helpCfg.exampleLatex, val, { macros: KATEX_MACROS, throwOnError: false, displayMode: false });
+        } else {
+          val.textContent = helpCfg.exampleText || helpCfg.exampleLatex || '';
+        }
+        sec.appendChild(val);
+        helpBodyEl.appendChild(sec);
+      }
+
+      helpBodyEl.scrollTop = 0;
+      helpOverlayEl.classList.add('open');
+      isHelpPopoverOpen = true;
+    }
+
+    function closeHelpPopover() {
+      if (!isHelpPopoverOpen) return;
+      helpOverlayEl.classList.remove('open');
+      isHelpPopoverOpen = false;
+    }
+
+    helpCloseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeHelpPopover();
+    });
+
     function openModal(title, renderFn, options = {}) {
+      closeHelpPopover();
       modalTitleEl.textContent = title;
       modalBodyEl.innerHTML = '';
       modalNav.isOpen = true;
@@ -2297,6 +2508,7 @@
     }
 
     function closeModal() {
+      closeHelpPopover();
       modalEl.classList.remove('open');
       modalNav.isOpen = false;
       modalNav.items = [];
@@ -2389,9 +2601,16 @@
       }
     }
 
-    function activateFocusedModalItem() {
+    function activateFocusedModalItem(showHelp = false) {
       const target = modalNav.items[modalNav.focusIndex];
-      if (target) target.click();
+      if (!target) return;
+      if (showHelp) {
+        if (typeof target.openHelp === 'function') {
+          target.openHelp();
+        }
+        return;
+      }
+      target.click();
     }
 
     document.getElementById('modal-close-btn').addEventListener('click', closeModal);
@@ -2575,6 +2794,12 @@
         shortcut: '1',
         menuLabel: '1: fdP normal...',
         iconSvg: menuIcon('<line x1="1.6" y1="12.6" x2="14.4" y2="12.6" stroke-width="1.2"/><path d="M1.8 12.6C4.4 12.6 5.6 3.2 8 3.2C10.4 3.2 11.6 12.6 14.2 12.6"/><line x1="10.5" y1="6.5" x2="10.5" y2="12.6" stroke-width="1.25"/><circle cx="10.5" cy="6.5" r="1.45" fill="currentColor" stroke="none"/>'),
+        help: {
+          desc: 'Calcula la densidad de probabilidad (altura de la curva normal) en un valor x dado μ y σ.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{normPdf}(x,\\ \\mu,\\ \\sigma)',
+          exampleLatex: '\\mathrm{normPdf}(0,\\ 0,\\ 1) \\approx 0.398942'
+        },
         title: 'fdP normal (normPdf)',
         fnName: 'normPdf',
         fields: [
@@ -2587,6 +2812,12 @@
         shortcut: '2',
         menuLabel: '2: fdA normal...',
         iconSvg: menuIcon('<path d="M1.8 12.6C4.4 12.6 5.6 3.2 8 3.2C9 3.2 9.7 4.7 10.5 6.5V12.6Z" fill="currentColor" fill-opacity="0.32" stroke="none"/><line x1="1.6" y1="12.6" x2="14.4" y2="12.6" stroke-width="1.2"/><path d="M1.8 12.6C4.4 12.6 5.6 3.2 8 3.2C10.4 3.2 11.6 12.6 14.2 12.6"/><line x1="10.5" y1="6.5" x2="10.5" y2="12.6" stroke-width="1.2"/>'),
+        help: {
+          desc: 'Calcula la probabilidad acumulada (área bajo la curva normal) entre un límite inferior y uno superior.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{normCdf}(\\text{inf},\\ \\text{sup},\\ \\mu,\\ \\sigma)',
+          exampleLatex: '\\mathrm{normCdf}(-1.96,\\ 1.96,\\ 0,\\ 1) \\approx 0.950004'
+        },
         title: 'fdA normal (normCdf)',
         fnName: 'normCdf',
         fields: [
@@ -2600,6 +2831,12 @@
         shortcut: '3',
         menuLabel: '3: Normal inversa...',
         iconSvg: menuIcon('<text x="8" y="12.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="11.4" font-weight="800" font-style="italic" font-family="Georgia, serif">Z</text>'),
+        help: {
+          desc: 'Devuelve el valor x (o puntaje Z) tal que el área acumulada a su izquierda bajo la normal sea igual al área dada.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{invNorm}(\\text{área},\\ \\mu,\\ \\sigma)',
+          exampleLatex: '\\mathrm{invNorm}(0.975,\\ 0,\\ 1) \\approx 1.95996'
+        },
         title: 'Normal inversa (invNorm)',
         fnName: 'invNorm',
         fields: [
@@ -2612,6 +2849,12 @@
         shortcut: '4',
         menuLabel: '4: fdP t...',
         iconSvg: menuIcon('<line x1="1.4" y1="12.4" x2="14.4" y2="12.4" stroke-width="1.2"/><path d="M1.6 12.4C3.8 12.1 5 5.2 7.4 5.2C9.8 5.2 11 12.1 13.4 12.4"/><line x1="9.8" y1="7.5" x2="9.8" y2="12.4" stroke-width="1.25"/><circle cx="9.8" cy="7.5" r="1.4" fill="currentColor" stroke="none"/><text x="13.4" y="6.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-style="italic" font-family="Georgia, serif">t</text>'),
+        help: {
+          desc: 'Calcula la densidad de probabilidad de la distribución t de Student en x con gl grados de libertad.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{tPdf}(x,\\ \\text{gl})',
+          exampleLatex: '\\mathrm{tPdf}(0,\\ 10) \\approx 0.389108'
+        },
         title: 'fdP t (tPdf)',
         fnName: 'tPdf',
         fields: [
@@ -2623,6 +2866,12 @@
         shortcut: '5',
         menuLabel: '5: fdA t...',
         iconSvg: menuIcon('<path d="M1.6 12.4C3.8 12.1 5 5.2 7.4 5.2C8.3 5.2 9.1 6.2 9.8 7.5V12.4Z" fill="currentColor" fill-opacity="0.32" stroke="none"/><line x1="1.4" y1="12.4" x2="14.4" y2="12.4" stroke-width="1.2"/><path d="M1.6 12.4C3.8 12.1 5 5.2 7.4 5.2C9.8 5.2 11 12.1 13.4 12.4"/><line x1="9.8" y1="7.5" x2="9.8" y2="12.4" stroke-width="1.2"/><text x="13.4" y="6.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-style="italic" font-family="Georgia, serif">t</text>'),
+        help: {
+          desc: 'Calcula la probabilidad acumulada bajo la curva t de Student entre un límite inferior y uno superior.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{tCdf}(\\text{inf},\\ \\text{sup},\\ \\text{gl})',
+          exampleLatex: '\\mathrm{tCdf}(-\\infty,\\ 2.228,\\ 10) \\approx 0.974994'
+        },
         title: 'fdA t (tCdf)',
         fnName: 'tCdf',
         fields: [
@@ -2635,6 +2884,12 @@
         shortcut: '6',
         menuLabel: '6: t inversa...',
         iconSvg: menuIcon('<text x="8" y="12.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="11.6" font-weight="800" font-style="italic" font-family="Georgia, serif">t</text>'),
+        help: {
+          desc: 'Devuelve el valor crítico t que deja a su izquierda un área acumulada dada para gl grados de libertad.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{invT}(\\text{área},\\ \\text{gl})',
+          exampleLatex: '\\mathrm{invT}(0.975,\\ 10) \\approx 2.22814'
+        },
         title: 't inversa (invT)',
         fnName: 'invT',
         fields: [
@@ -2646,6 +2901,12 @@
         shortcut: '7',
         menuLabel: '7: fdP χ²...',
         iconSvg: menuIcon('<line x1="1.6" y1="12.4" x2="14.4" y2="12.4" stroke-width="1.2"/><path d="M2 12.4C2.8 12.2 3.8 3.6 5.8 3.6C8 3.6 9.6 11.4 14.2 12.2"/><line x1="8.5" y1="6.6" x2="8.5" y2="12.4" stroke-width="1.25"/><circle cx="8.5" cy="6.6" r="1.4" fill="currentColor" stroke="none"/><text x="12.6" y="6.3" text-anchor="middle" fill="currentColor" stroke="none" font-size="5.6" font-weight="800" font-family="Georgia, serif">χ<tspan dy="-1.8" font-size="4.1">2</tspan></text>'),
+        help: {
+          desc: 'Calcula la densidad de probabilidad de la distribución chi-cuadrado (χ²) en x ≥ 0 con gl grados de libertad.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{chi2Pdf}(x,\\ \\text{gl})',
+          exampleLatex: '\\mathrm{chi2Pdf}(4,\\ 5) \\approx 0.15206'
+        },
         title: 'fdP χ² (chi2Pdf)',
         fnName: 'chi2Pdf',
         fields: [
@@ -2657,6 +2918,12 @@
         shortcut: '8',
         menuLabel: '8: fdA χ²...',
         iconSvg: menuIcon('<path d="M2 12.4C2.8 12.2 3.8 3.6 5.8 3.6C6.7 3.6 7.5 5 8.5 6.6V12.4Z" fill="currentColor" fill-opacity="0.32" stroke="none"/><line x1="1.6" y1="12.4" x2="14.4" y2="12.4" stroke-width="1.2"/><path d="M2 12.4C2.8 12.2 3.8 3.6 5.8 3.6C8 3.6 9.6 11.4 14.2 12.2"/><line x1="8.5" y1="6.6" x2="8.5" y2="12.4" stroke-width="1.2"/><text x="12.6" y="6.3" text-anchor="middle" fill="currentColor" stroke="none" font-size="5.6" font-weight="800" font-family="Georgia, serif">χ<tspan dy="-1.8" font-size="4.1">2</tspan></text>'),
+        help: {
+          desc: 'Calcula la probabilidad acumulada bajo la curva chi-cuadrado (χ²) entre dos límites con gl grados de libertad.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{chi2Cdf}(\\text{inf},\\ \\text{sup},\\ \\text{gl})',
+          exampleLatex: '\\mathrm{chi2Cdf}(0,\\ 5.991,\\ 2) \\approx 0.94999'
+        },
         title: 'fdA χ² (chi2Cdf)',
         fnName: 'chi2Cdf',
         fields: [
@@ -2669,6 +2936,12 @@
         shortcut: '9',
         menuLabel: '9: χ² inversa...',
         iconSvg: menuIcon('<text x="6.6" y="11.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.8" font-weight="800" font-style="italic" font-family="Georgia, serif">χ</text><text x="12.2" y="6.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">2</text>'),
+        help: {
+          desc: 'Devuelve el valor crítico χ² que acumula a su izquierda el área especificada para gl grados de libertad.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{invChi2}(\\text{área},\\ \\text{gl})',
+          exampleLatex: '\\mathrm{invChi2}(0.95,\\ 2) \\approx 5.99146'
+        },
         title: 'χ² inversa (invChi2)',
         fnName: 'invChi2',
         fields: [
@@ -2680,6 +2953,12 @@
         shortcut: 'a',
         menuLabel: 'A: fdP binomial...',
         iconSvg: menuIcon('<line x1="1.4" y1="13" x2="14.6" y2="13" stroke-width="1.2"/><rect x="1.8" y="9.8" width="1.9" height="3.2" rx="0.4" fill="currentColor" fill-opacity="0.22" stroke-width="0.9"/><rect x="4.4" y="6.4" width="1.9" height="6.6" rx="0.4" fill="currentColor" fill-opacity="0.22" stroke-width="0.9"/><rect x="7.05" y="3.2" width="1.9" height="9.8" rx="0.4" fill="currentColor" stroke="none"/><rect x="9.7" y="6.4" width="1.9" height="6.6" rx="0.4" fill="currentColor" fill-opacity="0.22" stroke-width="0.9"/><rect x="12.3" y="9.8" width="1.9" height="3.2" rx="0.4" fill="currentColor" fill-opacity="0.22" stroke-width="0.9"/>'),
+        help: {
+          desc: 'Calcula la probabilidad exacta de obtener x éxitos en n ensayos independientes con probabilidad de éxito p.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{binomPdf}(n,\\ p,\\ x)',
+          exampleLatex: '\\mathrm{binomPdf}(10,\\ 0.5,\\ 5) \\approx 0.246094'
+        },
         title: 'fdP binomial (binomPdf)',
         fnName: 'binomPdf',
         fields: [
@@ -2692,6 +2971,12 @@
         shortcut: 'b',
         menuLabel: 'B: fdA binomial...',
         iconSvg: menuIcon('<line x1="1.4" y1="13" x2="14.6" y2="13" stroke-width="1.2"/><rect x="1.8" y="9.8" width="1.9" height="3.2" rx="0.4" fill="currentColor" stroke="none"/><rect x="4.4" y="6.4" width="1.9" height="6.6" rx="0.4" fill="currentColor" stroke="none"/><rect x="7.05" y="3.2" width="1.9" height="9.8" rx="0.4" fill="currentColor" stroke="none"/><rect x="9.7" y="6.4" width="1.9" height="6.6" rx="0.4" fill="currentColor" fill-opacity="0.2" stroke-width="0.9"/><rect x="12.3" y="9.8" width="1.9" height="3.2" rx="0.4" fill="currentColor" fill-opacity="0.2" stroke-width="0.9"/>'),
+        help: {
+          desc: 'Calcula la probabilidad acumulada de obtener entre inf y sup éxitos (ambos incluidos) en una distribución binomial.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{binomCdf}(n,\\ p,\\ \\text{inf},\\ \\text{sup})',
+          exampleLatex: '\\mathrm{binomCdf}(10,\\ 0.5,\\ 0,\\ 5) \\approx 0.623047'
+        },
         title: 'fdA binomial (binomCdf)',
         fnName: 'binomCdf',
         fields: [
@@ -2705,6 +2990,12 @@
         shortcut: 'c',
         menuLabel: 'C: fdP de Poisson...',
         iconSvg: menuIcon('<line x1="1.4" y1="13" x2="14.6" y2="13" stroke-width="1.2"/><rect x="1.8" y="6.6" width="1.9" height="6.4" rx="0.4" fill="currentColor" fill-opacity="0.22" stroke-width="0.9"/><rect x="4.4" y="3.4" width="1.9" height="9.6" rx="0.4" fill="currentColor" stroke="none"/><rect x="7.05" y="5.8" width="1.9" height="7.2" rx="0.4" fill="currentColor" fill-opacity="0.22" stroke-width="0.9"/><rect x="9.7" y="8.8" width="1.9" height="4.2" rx="0.4" fill="currentColor" fill-opacity="0.22" stroke-width="0.9"/><rect x="12.3" y="10.8" width="1.9" height="2.2" rx="0.4" fill="currentColor" fill-opacity="0.22" stroke-width="0.9"/><text x="12.4" y="6.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-style="italic" font-family="Georgia, serif">λ</text>'),
+        help: {
+          desc: 'Calcula la probabilidad exacta de observar x ocurrencias cuando la tasa media de eventos es λ.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{poissPdf}(\\lambda,\\ x)',
+          exampleLatex: '\\mathrm{poissPdf}(3,\\ 2) \\approx 0.224042'
+        },
         title: 'fdP de Poisson (poissPdf)',
         fnName: 'poissPdf',
         fields: [
@@ -2716,6 +3007,12 @@
         shortcut: 'd',
         menuLabel: 'D: fdA de Poisson...',
         iconSvg: menuIcon('<line x1="1.4" y1="13" x2="14.6" y2="13" stroke-width="1.2"/><rect x="1.8" y="6.6" width="1.9" height="6.4" rx="0.4" fill="currentColor" stroke="none"/><rect x="4.4" y="3.4" width="1.9" height="9.6" rx="0.4" fill="currentColor" stroke="none"/><rect x="7.05" y="5.8" width="1.9" height="7.2" rx="0.4" fill="currentColor" stroke="none"/><rect x="9.7" y="8.8" width="1.9" height="4.2" rx="0.4" fill="currentColor" fill-opacity="0.2" stroke-width="0.9"/><rect x="12.3" y="10.8" width="1.9" height="2.2" rx="0.4" fill="currentColor" fill-opacity="0.2" stroke-width="0.9"/><text x="12.4" y="6.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-style="italic" font-family="Georgia, serif">λ</text>'),
+        help: {
+          desc: 'Calcula la probabilidad acumulada de observar entre inf y sup ocurrencias en una distribución de Poisson de media λ.',
+          syntaxLabel: 'Asistente / comando',
+          syntaxLatex: '\\mathrm{poissCdf}(\\lambda,\\ \\text{inf},\\ \\text{sup})',
+          exampleLatex: '\\mathrm{poissCdf}(3,\\ 0,\\ 2) \\approx 0.42319'
+        },
         title: 'fdA de Poisson (poissCdf)',
         fnName: 'poissCdf',
         fields: [
@@ -2974,13 +3271,28 @@
         (body) => {
           const list = document.createElement('div');
           list.className = 'menu-list';
-          DISTRIBUTION_ORDER.forEach((distKey) => {
+          DISTRIBUTION_ORDER.forEach((distKey, idx) => {
             const def = DISTRIBUTION_DEFS[distKey];
             const row = document.createElement('div');
             row.className = 'menu-row';
             row.dataset.shortcut = def.shortcut;
             row.innerHTML = `<span class="menu-cat-left">${def.iconSvg || ''}<span>${def.menuLabel}</span></span>`;
-            row.addEventListener('click', () => {
+            if (def.help) {
+              row.openHelp = () => openHelpPopover({
+                title: def.menuLabel,
+                iconSvg: def.iconSvg,
+                ...def.help
+              });
+            }
+            row.addEventListener('click', (e) => {
+              const wantHelp = e.ctrlKey || e.metaKey || ctrlActive;
+              if (wantHelp) {
+                setCtrl(false);
+                modalNav.focusIndex = idx;
+                updateModalFocus();
+                if (typeof row.openHelp === 'function') row.openHelp();
+                return;
+              }
               openDistributionModal(distKey, () => openDistributionsSubmenu(onBackFn));
             });
             list.appendChild(row);
@@ -3233,10 +3545,30 @@
         title: '1: Acciones',
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M9.5 1.5L3.5 9h4.2l-1.2 5.5L12.5 7H8.3l1.2-5.5z"/></svg>',
         items: [
-          { shortcut: '1', label: '1: Definir', iconSvg: menuIcon('<circle cx="3.8" cy="5.5" r="1.25" fill="currentColor" stroke="none"/><circle cx="3.8" cy="10.5" r="1.25" fill="currentColor" stroke="none"/><line x1="7.5" y1="6" x2="14" y2="6" stroke-width="1.8"/><line x1="7.5" y1="10" x2="14" y2="10" stroke-width="1.8"/>'), latex: '\\mathrm{Define}\\ f\\left(x\\right)=#?' },
-          { shortcut: '2', label: '2: Borrar variable', iconSvg: menuIcon('<text x="5.2" y="11.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="9.8" font-weight="800" font-style="italic" font-family="Georgia, serif">x</text><path d="M9.8 5.6L13.8 9.6M13.8 5.6L9.8 9.6" stroke-width="1.6"/>'), latex: '\\mathrm{DelVar}\\ #?' },
-          { shortcut: '3', label: '3: Borrar a–z', iconSvg: menuIcon('<rect x="1.2" y="3" width="13.6" height="10" rx="2" stroke-width="1.2"/><text x="8" y="10" text-anchor="middle" fill="currentColor" stroke="none" font-size="6" font-weight="800" font-family="Segoe UI, Arial, sans-serif">a-z</text><line x1="2.8" y1="13.8" x2="13.2" y2="2.2" stroke-width="1.45"/>'), action: () => casWorker?.postMessage({ id: ++reqCounter, type: 'EVAL', expr: 'ClearAZ', inputLatex: '\\text{Clear a–z}' }) },
-          { shortcut: '4', label: '4: Limpiar historial y memoria', iconSvg: menuIcon('<path d="M3.2 7.5A4.8 4.8 0 1 1 4.6 11.4"/><polyline points="1.8 5.2 3.1 7.8 5.8 6.8"/><circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none"/>'), action: () => casWorker?.postMessage({ id: ++reqCounter, type: 'RESET_NAMESPACE' }) }
+          {
+            shortcut: '1', label: '1: Definir',
+            iconSvg: menuIcon('<circle cx="3.8" cy="5.5" r="1.25" fill="currentColor" stroke="none"/><circle cx="3.8" cy="10.5" r="1.25" fill="currentColor" stroke="none"/><line x1="7.5" y1="6" x2="14" y2="6" stroke-width="1.8"/><line x1="7.5" y1="10" x2="14" y2="10" stroke-width="1.8"/>'),
+            latex: '\\mathrm{Define}\\ f\\left(x\\right)=#?',
+            help: { desc: 'Guarda una función o variable personalizada en memoria para reutilizarla en cálculos posteriores.', syntaxLatex: '\\mathrm{Define}\\ f(x)=\\text{expresión}', exampleLatex: '\\mathrm{Define}\\ f(x)=x^2+1 \\;\\Rightarrow\\; f(3)=10' }
+          },
+          {
+            shortcut: '2', label: '2: Borrar variable',
+            iconSvg: menuIcon('<text x="5.2" y="11.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="9.8" font-weight="800" font-style="italic" font-family="Georgia, serif">x</text><path d="M9.8 5.6L13.8 9.6M13.8 5.6L9.8 9.6" stroke-width="1.6"/>'),
+            latex: '\\mathrm{DelVar}\\ #?',
+            help: { desc: 'Elimina una o más variables o funciones guardadas para que vuelvan a actuar como símbolos libres.', syntaxLatex: '\\mathrm{DelVar}\\ \\text{variable}', exampleLatex: '\\mathrm{DelVar}\\ a,\\ f' }
+          },
+          {
+            shortcut: '3', label: '3: Borrar a–z',
+            iconSvg: menuIcon('<rect x="1.2" y="3" width="13.6" height="10" rx="2" stroke-width="1.2"/><text x="8" y="10" text-anchor="middle" fill="currentColor" stroke="none" font-size="6" font-weight="800" font-family="Segoe UI, Arial, sans-serif">a-z</text><line x1="2.8" y1="13.8" x2="13.2" y2="2.2" stroke-width="1.45"/>'),
+            action: () => casWorker?.postMessage({ id: ++reqCounter, type: 'EVAL', expr: 'ClearAZ', inputLatex: '\\text{Clear a–z}' }),
+            help: { desc: 'Borra de inmediato todas las variables de una sola letra (de la a a la z) guardadas en memoria, conservando el historial.', syntaxLabel: 'Acción directa', syntaxText: 'No inserta plantilla: ejecuta ClearAZ al seleccionarla.' }
+          },
+          {
+            shortcut: '4', label: '4: Limpiar historial y memoria',
+            iconSvg: menuIcon('<path d="M3.2 7.5A4.8 4.8 0 1 1 4.6 11.4"/><polyline points="1.8 5.2 3.1 7.8 5.8 6.8"/><circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none"/>'),
+            action: () => casWorker?.postMessage({ id: ++reqCounter, type: 'RESET_NAMESPACE' }),
+            help: { desc: 'Reinicia por completo la sesión CAS: borra todo el historial en pantalla y todas las variables y funciones almacenadas.', syntaxLabel: 'Acción directa', syntaxText: 'No inserta plantilla: reinicia el motor simbólico al instante.' }
+          }
         ]
       },
       {
@@ -3244,15 +3576,60 @@
         title: '2: Número',
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="1.2" y="3" width="13.6" height="10" rx="2"/><text x="8" y="10.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">123</text></svg>',
         items: [
-          { shortcut: '1', label: '1: Convertir a decimal', iconSvg: menuIcon('<path d="M2.5 6.1C4.3 4.3 6.2 4.3 8 6.1S11.7 7.9 13.5 6.1" stroke-width="1.65"/><path d="M2.5 10.3C4.3 8.5 6.2 8.5 8 10.3S11.7 12.1 13.5 10.3" stroke-width="1.65"/>'), latex: '\\mathrm{approx}\\left(#?\\right)' },
-          { shortcut: '2', label: '2: Aproximar a fracción', iconSvg: menuIcon('<rect x="5.5" y="1.8" width="5" height="4.2" rx="1" stroke-width="1.3"/><line x1="3" y1="8" x2="13" y2="8" stroke-width="1.6"/><rect x="5.5" y="10" width="5" height="4.2" rx="1" stroke-width="1.3"/>'), latex: '\\mathrm{exact}\\left(#?\\right)' },
-          { shortcut: '3', label: '3: Factorizar entero', iconSvg: menuIcon('<circle cx="8" cy="3.4" r="1.6" fill="currentColor" stroke="none"/><line x1="7" y1="4.8" x2="4.2" y2="11"/><line x1="9" y1="4.8" x2="11.8" y2="11"/><circle cx="3.8" cy="12.4" r="1.6" fill="currentColor" stroke="none"/><circle cx="12.2" cy="12.4" r="1.6" fill="currentColor" stroke="none"/>'), latex: '\\mathrm{ifactor}\\left(#?\\right)' },
-          { shortcut: '4', label: '4: Mínimo común múltiplo', iconSvg: menuIcon('<rect x="1" y="3" width="14" height="10" rx="2" stroke-width="1.2"/><text x="8" y="9.9" text-anchor="middle" fill="currentColor" stroke="none" font-size="5.5" font-weight="800" font-family="Segoe UI, Arial, sans-serif">mcm</text>'), latex: '\\mathrm{lcm}\\left(#?, #?\\right)' },
-          { shortcut: '5', label: '5: Máximo común divisor', iconSvg: menuIcon('<rect x="1" y="3" width="14" height="10" rx="2" stroke-width="1.2"/><text x="8" y="9.9" text-anchor="middle" fill="currentColor" stroke="none" font-size="5.8" font-weight="800" font-family="Segoe UI, Arial, sans-serif">mcd</text>'), latex: '\\mathrm{gcd}\\left(#?, #?\\right)' },
-          { shortcut: '6', label: '6: Resto', iconSvg: menuIcon('<circle cx="4.6" cy="4.6" r="1.7" stroke-width="1.45"/><circle cx="11.4" cy="11.4" r="1.7" stroke-width="1.45"/><line x1="12.2" y1="3.4" x2="3.8" y2="12.6" stroke-width="1.6"/>'), latex: '\\mathrm{irem}\\left(#?, #?\\right)' },
-          { shortcut: '7', label: '7: Fracciones parciales', iconSvg: menuIcon('<rect x="2.2" y="2.3" width="4.4" height="3.8" rx="0.9" stroke-width="1.25"/><line x1="1.2" y1="8" x2="7.6" y2="8" stroke-width="1.5"/><rect x="2.2" y="9.9" width="4.4" height="3.8" rx="0.9" stroke-width="1.25"/><line x1="11.7" y1="5.3" x2="11.7" y2="10.7" stroke-width="1.65"/><line x1="9" y1="8" x2="14.4" y2="8" stroke-width="1.65"/>'), latex: '\\mathrm{propFrac}\\left(#?\\right)' },
-          { shortcut: '8', label: '8: Conjugado complejo', iconSvg: menuIcon('<line x1="4.4" y1="3.1" x2="11.6" y2="3.1" stroke-width="1.55"/><text x="8" y="13.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="11.2" font-weight="800" font-style="italic" font-family="Georgia, serif">z</text>'), latex: '\\mathrm{conj}\\left(#?\\right)' },
-          { shortcut: '9', label: '9: Parte real', iconSvg: menuIcon('<text x="8" y="11.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="9.4" font-weight="800" font-family="Georgia, serif">Re</text>'), latex: '\\mathrm{real}\\left(#?\\right)' }
+          {
+            shortcut: '1', label: '1: Convertir a decimal',
+            iconSvg: menuIcon('<path d="M2.5 6.1C4.3 4.3 6.2 4.3 8 6.1S11.7 7.9 13.5 6.1" stroke-width="1.65"/><path d="M2.5 10.3C4.3 8.5 6.2 8.5 8 10.3S11.7 12.1 13.5 10.3" stroke-width="1.65"/>'),
+            latex: '\\mathrm{approx}\\left(#?\\right)',
+            help: { desc: 'Evalúa una expresión exacta y devuelve su aproximación en formato decimal.', syntaxLatex: '\\mathrm{approx}(\\text{expresión})', exampleLatex: '\\mathrm{approx}\\!\\left(\\frac{\\pi}{4}\\right) \\to 0.785398' }
+          },
+          {
+            shortcut: '2', label: '2: Aproximar a fracción',
+            iconSvg: menuIcon('<rect x="5.5" y="1.8" width="5" height="4.2" rx="1" stroke-width="1.3"/><line x1="3" y1="8" x2="13" y2="8" stroke-width="1.6"/><rect x="5.5" y="10" width="5" height="4.2" rx="1" stroke-width="1.3"/>'),
+            latex: '\\mathrm{exact}\\left(#?\\right)',
+            help: { desc: 'Convierte un número decimal o expresión aproximada a su fracción racional exacta.', syntaxLatex: '\\mathrm{exact}(\\text{número})', exampleLatex: '\\mathrm{exact}(0.375) \\to \\frac{3}{8}' }
+          },
+          {
+            shortcut: '3', label: '3: Factorizar entero',
+            iconSvg: menuIcon('<circle cx="8" cy="3.4" r="1.6" fill="currentColor" stroke="none"/><line x1="7" y1="4.8" x2="4.2" y2="11"/><line x1="9" y1="4.8" x2="11.8" y2="11"/><circle cx="3.8" cy="12.4" r="1.6" fill="currentColor" stroke="none"/><circle cx="12.2" cy="12.4" r="1.6" fill="currentColor" stroke="none"/>'),
+            latex: '\\mathrm{ifactor}\\left(#?\\right)',
+            help: { desc: 'Descompone un número entero en su producto de factores primos.', syntaxLatex: '\\mathrm{ifactor}(\\text{entero})', exampleLatex: '\\mathrm{ifactor}(360) \\to 2^3\\cdot 3^2\\cdot 5' }
+          },
+          {
+            shortcut: '4', label: '4: Mínimo común múltiplo',
+            iconSvg: menuIcon('<rect x="1" y="3" width="14" height="10" rx="2" stroke-width="1.2"/><text x="8" y="9.9" text-anchor="middle" fill="currentColor" stroke="none" font-size="5.5" font-weight="800" font-family="Segoe UI, Arial, sans-serif">mcm</text>'),
+            latex: '\\mathrm{lcm}\\left(#?, #?\\right)',
+            help: { desc: 'Calcula el mínimo común múltiplo (mcm) de dos enteros o polinomios.', syntaxLatex: '\\mathrm{lcm}(a,\\ b)', exampleLatex: '\\mathrm{lcm}(12,\\ 18) \\to 36' }
+          },
+          {
+            shortcut: '5', label: '5: Máximo común divisor',
+            iconSvg: menuIcon('<rect x="1" y="3" width="14" height="10" rx="2" stroke-width="1.2"/><text x="8" y="9.9" text-anchor="middle" fill="currentColor" stroke="none" font-size="5.8" font-weight="800" font-family="Segoe UI, Arial, sans-serif">mcd</text>'),
+            latex: '\\mathrm{gcd}\\left(#?, #?\\right)',
+            help: { desc: 'Calcula el máximo común divisor (mcd) de dos enteros o polinomios.', syntaxLatex: '\\mathrm{gcd}(a,\\ b)', exampleLatex: '\\mathrm{gcd}(24,\\ 36) \\to 12' }
+          },
+          {
+            shortcut: '6', label: '6: Resto',
+            iconSvg: menuIcon('<circle cx="4.6" cy="4.6" r="1.7" stroke-width="1.45"/><circle cx="11.4" cy="11.4" r="1.7" stroke-width="1.45"/><line x1="12.2" y1="3.4" x2="3.8" y2="12.6" stroke-width="1.6"/>'),
+            latex: '\\mathrm{irem}\\left(#?, #?\\right)',
+            help: { desc: 'Devuelve el resto (residuo) de la división entera del primer número entre el segundo.', syntaxLatex: '\\mathrm{irem}(\\text{dividendo},\\ \\text{divisor})', exampleLatex: '\\mathrm{irem}(17,\\ 5) \\to 2' }
+          },
+          {
+            shortcut: '7', label: '7: Fracciones parciales',
+            iconSvg: menuIcon('<rect x="2.2" y="2.3" width="4.4" height="3.8" rx="0.9" stroke-width="1.25"/><line x1="1.2" y1="8" x2="7.6" y2="8" stroke-width="1.5"/><rect x="2.2" y="9.9" width="4.4" height="3.8" rx="0.9" stroke-width="1.25"/><line x1="11.7" y1="5.3" x2="11.7" y2="10.7" stroke-width="1.65"/><line x1="9" y1="8" x2="14.4" y2="8" stroke-width="1.65"/>'),
+            latex: '\\mathrm{propFrac}\\left(#?\\right)',
+            help: { desc: 'Descompone una fracción algebraica racional en una suma de fracciones más simples.', syntaxLatex: '\\mathrm{propFrac}(\\text{fracción})', exampleLatex: '\\mathrm{propFrac}\\!\\left(\\frac{1}{x^2-1}\\right) \\to \\frac{1}{2(x-1)}-\\frac{1}{2(x+1)}' }
+          },
+          {
+            shortcut: '8', label: '8: Conjugado complejo',
+            iconSvg: menuIcon('<line x1="4.4" y1="3.1" x2="11.6" y2="3.1" stroke-width="1.55"/><text x="8" y="13.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="11.2" font-weight="800" font-style="italic" font-family="Georgia, serif">z</text>'),
+            latex: '\\mathrm{conj}\\left(#?\\right)',
+            help: { desc: 'Calcula el conjugado complejo de un número o expresión, invirtiendo el signo de la parte imaginaria.', syntaxLatex: '\\mathrm{conj}(z)', exampleLatex: '\\mathrm{conj}(3+4i) \\to 3-4i' }
+          },
+          {
+            shortcut: '9', label: '9: Parte real',
+            iconSvg: menuIcon('<text x="8" y="11.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="9.4" font-weight="800" font-family="Georgia, serif">Re</text>'),
+            latex: '\\mathrm{real}\\left(#?\\right)',
+            help: { desc: 'Extrae únicamente la parte real de un número o expresión compleja.', syntaxLatex: '\\mathrm{real}(z)', exampleLatex: '\\mathrm{real}(3+4i) \\to 3' }
+          }
         ]
       },
       {
@@ -3260,16 +3637,66 @@
         title: '3: Álgebra',
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 3L7.5 13M7.5 3L1.5 13"/><line x1="9.8" y1="6.2" x2="14.8" y2="6.2"/><line x1="9.8" y1="9.8" x2="14.8" y2="9.8"/></svg>',
         items: [
-          { shortcut: '1', label: '1: Solve', iconSvg: menuIcon('<path d="M1.8 5.2L5.8 11.2M5.8 5.2L1.8 11.2" stroke-width="1.6"/><line x1="7.4" y1="7" x2="10.4" y2="7" stroke-width="1.5"/><line x1="7.4" y1="9.6" x2="10.4" y2="9.6" stroke-width="1.5"/><path d="M11.8 6.2a1.6 1.6 0 0 1 2.7 1.1c0 .9-1.1 1.2-1.1 2.1" stroke-width="1.45"/><circle cx="13.4" cy="11.6" r="0.9" fill="currentColor" stroke="none"/>'), latex: '\\mathrm{solve}\\left(#?, #?\\right)' },
-          { shortcut: '2', label: '2: Factorizar', iconSvg: menuIcon('<path d="M3.2 3.2C1.5 5.5 1.5 10.5 3.2 12.8" stroke-width="1.45"/><path d="M5.1 3.2C6.8 5.5 6.8 10.5 5.1 12.8" stroke-width="1.45"/><circle cx="8" cy="8" r="1.05" fill="currentColor" stroke="none"/><path d="M10.9 3.2C9.2 5.5 9.2 10.5 10.9 12.8" stroke-width="1.45"/><path d="M12.8 3.2C14.5 5.5 14.5 10.5 12.8 12.8" stroke-width="1.45"/>'), latex: '\\mathrm{factor}\\left(#?\\right)' },
-          { shortcut: '3', label: '3: Expandir', iconSvg: menuIcon('<polyline points="5.2 4.6 2 8 5.2 11.4"/><line x1="2.2" y1="8" x2="6.4" y2="8"/><polyline points="10.8 4.6 14 8 10.8 11.4"/><line x1="9.6" y1="8" x2="13.8" y2="8"/><circle cx="8" cy="8" r="1.15" fill="currentColor" stroke="none"/>'), latex: '\\mathrm{expand}\\left(#?\\right)' },
-          { shortcut: '4', label: '4: Ceros', iconSvg: menuIcon('<line x1="1.6" y1="9.2" x2="14.4" y2="9.2" stroke-width="1.2"/><path d="M2.4 3Q8 19 13.6 3" stroke-width="1.45"/><circle cx="5.35" cy="9.2" r="1.5" fill="currentColor" stroke="none"/><circle cx="10.65" cy="9.2" r="1.5" fill="currentColor" stroke="none"/>'), latex: '\\mathrm{zeros}\\left(#?, x\\right)' },
-          { shortcut: '5', label: '5: Completar el cuadrado', iconSvg: menuIcon('<rect x="2.2" y="2.2" width="11.6" height="11.6" rx="1.3" stroke-width="1.35"/><line x1="9.6" y1="2.2" x2="9.6" y2="13.8" stroke-width="1.1"/><line x1="2.2" y1="9.6" x2="13.8" y2="9.6" stroke-width="1.1"/><rect x="9.6" y="9.6" width="4.2" height="4.2" fill="currentColor" stroke="none"/>'), latex: '\\mathrm{completeSquare}\\left(#?, x\\right)' },
-          { shortcut: '6', label: '6: Resolución numérica', iconSvg: menuIcon('<path d="M1.8 4.8L6.2 11.2M6.2 4.8L1.8 11.2" stroke-width="1.65"/><path d="M8.2 6.6C9.3 5.3 10.5 5.3 11.4 6.6S13.3 7.9 14.4 6.6" stroke-width="1.45"/><path d="M8.2 10.1C9.3 8.8 10.5 8.8 11.4 10.1S13.3 11.4 14.4 10.1" stroke-width="1.45"/>'), latex: '\\mathrm{nSolve}\\left(#?, #?\\right)' },
-          { shortcut: '7', label: '7: Sistema de ecuaciones 2×2', iconSvg: menuIcon('<path d="M5.4 2.5C3.8 2.5 3.8 3.8 3.8 5.2v1.2C3.8 7.3 3 8 2.1 8c.9 0 1.7.7 1.7 1.6v1.2c0 1.4 0 2.7 1.6 2.7" stroke-width="1.45"/><line x1="7.4" y1="5.6" x2="13.8" y2="5.6" stroke-width="1.55"/><line x1="7.4" y1="10.4" x2="13.8" y2="10.4" stroke-width="1.55"/>'), latex: '\\mathrm{solve}\\left(\\left[#?=#?, #?=#?\\right], \\left[x, y\\right]\\right)' },
-          { shortcut: '8', label: '8: Resolución compleja', iconSvg: menuIcon('<text x="4.6" y="12.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="11.2" font-weight="800" font-style="italic" font-family="Georgia, serif">i</text><line x1="8.2" y1="6.4" x2="14.2" y2="6.4" stroke-width="1.65"/><line x1="8.2" y1="9.8" x2="14.2" y2="9.8" stroke-width="1.65"/>'), latex: '\\mathrm{cSolve}\\left(#?, #?\\right)' },
-          { shortcut: '9', label: '9: Factorización compleja', iconSvg: menuIcon('<path d="M4.8 2.8C2.4 5.2 2.4 10.8 4.8 13.2" stroke-width="1.5"/><path d="M11.2 2.8C13.6 5.2 13.6 10.8 11.2 13.2" stroke-width="1.5"/><text x="8" y="11.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.2" font-weight="800" font-style="italic" font-family="Georgia, serif">i</text>'), latex: '\\mathrm{cFactor}\\left(#?\\right)' },
-          { shortcut: 'a', label: 'A: Ceros complejos', iconSvg: menuIcon('<line x1="1.8" y1="8" x2="14.2" y2="8" stroke-width="1.2"/><line x1="6.2" y1="2" x2="6.2" y2="14" stroke-width="1.2"/><circle cx="10.8" cy="4.4" r="1.6" fill="currentColor" stroke="none"/><circle cx="10.8" cy="11.6" r="1.6" fill="currentColor" stroke="none"/>'), latex: '\\mathrm{cZeros}\\left(#?, x\\right)' }
+          {
+            shortcut: '1', label: '1: Solve',
+            iconSvg: menuIcon('<path d="M1.8 5.2L5.8 11.2M5.8 5.2L1.8 11.2" stroke-width="1.6"/><line x1="7.4" y1="7" x2="10.4" y2="7" stroke-width="1.5"/><line x1="7.4" y1="9.6" x2="10.4" y2="9.6" stroke-width="1.5"/><path d="M11.8 6.2a1.6 1.6 0 0 1 2.7 1.1c0 .9-1.1 1.2-1.1 2.1" stroke-width="1.45"/><circle cx="13.4" cy="11.6" r="0.9" fill="currentColor" stroke="none"/>'),
+            latex: '\\mathrm{solve}\\left(#?, #?\\right)',
+            help: { desc: 'Resuelve simbólicamente una ecuación o inecuación en los reales respecto a la variable indicada.', syntaxLatex: '\\mathrm{solve}(\\text{ecuación},\\ \\text{var})', exampleLatex: '\\mathrm{solve}(x^2-5x+6=0,\\ x) \\to x=2\\ \\text{o}\\ x=3' }
+          },
+          {
+            shortcut: '2', label: '2: Factorizar',
+            iconSvg: menuIcon('<path d="M3.2 3.2C1.5 5.5 1.5 10.5 3.2 12.8" stroke-width="1.45"/><path d="M5.1 3.2C6.8 5.5 6.8 10.5 5.1 12.8" stroke-width="1.45"/><circle cx="8" cy="8" r="1.05" fill="currentColor" stroke="none"/><path d="M10.9 3.2C9.2 5.5 9.2 10.5 10.9 12.8" stroke-width="1.45"/><path d="M12.8 3.2C14.5 5.5 14.5 10.5 12.8 12.8" stroke-width="1.45"/>'),
+            latex: '\\mathrm{factor}\\left(#?\\right)',
+            help: { desc: 'Factoriza un polinomio o expresión algebraica en producto de factores sobre los reales.', syntaxLatex: '\\mathrm{factor}(\\text{expresión})', exampleLatex: '\\mathrm{factor}(x^2-9) \\to (x-3)(x+3)' }
+          },
+          {
+            shortcut: '3', label: '3: Expandir',
+            iconSvg: menuIcon('<polyline points="5.2 4.6 2 8 5.2 11.4"/><line x1="2.2" y1="8" x2="6.4" y2="8"/><polyline points="10.8 4.6 14 8 10.8 11.4"/><line x1="9.6" y1="8" x2="13.8" y2="8"/><circle cx="8" cy="8" r="1.15" fill="currentColor" stroke="none"/>'),
+            latex: '\\mathrm{expand}\\left(#?\\right)',
+            help: { desc: 'Desarrolla productos, potencias y paréntesis de una expresión algebraica.', syntaxLatex: '\\mathrm{expand}(\\text{expresión})', exampleLatex: '\\mathrm{expand}((x+2)^2) \\to x^2+4x+4' }
+          },
+          {
+            shortcut: '4', label: '4: Ceros',
+            iconSvg: menuIcon('<line x1="1.6" y1="9.2" x2="14.4" y2="9.2" stroke-width="1.2"/><path d="M2.4 3Q8 19 13.6 3" stroke-width="1.45"/><circle cx="5.35" cy="9.2" r="1.5" fill="currentColor" stroke="none"/><circle cx="10.65" cy="9.2" r="1.5" fill="currentColor" stroke="none"/>'),
+            latex: '\\mathrm{zeros}\\left(#?, x\\right)',
+            help: { desc: 'Encuentra la lista de raíces reales donde la expresión se anula (= 0) para la variable indicada.', syntaxLatex: '\\mathrm{zeros}(\\text{expresión},\\ x)', exampleLatex: '\\mathrm{zeros}(x^2-4,\\ x) \\to \\{-2,\\ 2\\}' }
+          },
+          {
+            shortcut: '5', label: '5: Completar el cuadrado',
+            iconSvg: menuIcon('<rect x="2.2" y="2.2" width="11.6" height="11.6" rx="1.3" stroke-width="1.35"/><line x1="9.6" y1="2.2" x2="9.6" y2="13.8" stroke-width="1.1"/><line x1="2.2" y1="9.6" x2="13.8" y2="9.6" stroke-width="1.1"/><rect x="9.6" y="9.6" width="4.2" height="4.2" fill="currentColor" stroke="none"/>'),
+            latex: '\\mathrm{completeSquare}\\left(#?, x\\right)',
+            help: { desc: 'Reescribe una expresión cuadrática en forma canónica completando el cuadrado.', syntaxLatex: '\\mathrm{completeSquare}(\\text{expr},\\ x)', exampleLatex: '\\mathrm{completeSquare}(x^2+6x+5,\\ x) \\to (x+3)^2-4' }
+          },
+          {
+            shortcut: '6', label: '6: Resolución numérica',
+            iconSvg: menuIcon('<path d="M1.8 4.8L6.2 11.2M6.2 4.8L1.8 11.2" stroke-width="1.65"/><path d="M8.2 6.6C9.3 5.3 10.5 5.3 11.4 6.6S13.3 7.9 14.4 6.6" stroke-width="1.45"/><path d="M8.2 10.1C9.3 8.8 10.5 8.8 11.4 10.1S13.3 11.4 14.4 10.1" stroke-width="1.45"/>'),
+            latex: '\\mathrm{nSolve}\\left(#?, #?\\right)',
+            help: { desc: 'Busca una solución decimal aproximada para una ecuación, útil cuando no hay solución simbólica cerrada.', syntaxLatex: '\\mathrm{nSolve}(\\text{ecuación},\\ \\text{var})', exampleLatex: '\\mathrm{nSolve}(\\cos(x)=x,\\ x) \\to 0.739085' }
+          },
+          {
+            shortcut: '7', label: '7: Sistema de ecuaciones 2×2',
+            iconSvg: menuIcon('<path d="M5.4 2.5C3.8 2.5 3.8 3.8 3.8 5.2v1.2C3.8 7.3 3 8 2.1 8c.9 0 1.7.7 1.7 1.6v1.2c0 1.4 0 2.7 1.6 2.7" stroke-width="1.45"/><line x1="7.4" y1="5.6" x2="13.8" y2="5.6" stroke-width="1.55"/><line x1="7.4" y1="10.4" x2="13.8" y2="10.4" stroke-width="1.55"/>'),
+            latex: '\\mathrm{solve}\\left(\\left[#?=#?, #?=#?\\right], \\left[x, y\\right]\\right)',
+            help: { desc: 'Inserta la plantilla de solve preparada para resolver un sistema simultáneo de dos ecuaciones en x e y.', syntaxLatex: '\\mathrm{solve}([\\text{ec}_1,\\ \\text{ec}_2],\\ [x,\\ y])', exampleLatex: '\\mathrm{solve}([x+y=5,\\ x-y=1],\\ [x,\\ y]) \\to x=3,\\ y=2' }
+          },
+          {
+            shortcut: '8', label: '8: Resolución compleja',
+            iconSvg: menuIcon('<text x="4.6" y="12.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="11.2" font-weight="800" font-style="italic" font-family="Georgia, serif">i</text><line x1="8.2" y1="6.4" x2="14.2" y2="6.4" stroke-width="1.65"/><line x1="8.2" y1="9.8" x2="14.2" y2="9.8" stroke-width="1.65"/>'),
+            latex: '\\mathrm{cSolve}\\left(#?, #?\\right)',
+            help: { desc: 'Resuelve una ecuación incluyendo también soluciones en el plano complejo (con unidad imaginaria i).', syntaxLatex: '\\mathrm{cSolve}(\\text{ecuación},\\ \\text{var})', exampleLatex: '\\mathrm{cSolve}(x^2+1=0,\\ x) \\to x=-i\\ \\text{o}\\ x=i' }
+          },
+          {
+            shortcut: '9', label: '9: Factorización compleja',
+            iconSvg: menuIcon('<path d="M4.8 2.8C2.4 5.2 2.4 10.8 4.8 13.2" stroke-width="1.5"/><path d="M11.2 2.8C13.6 5.2 13.6 10.8 11.2 13.2" stroke-width="1.5"/><text x="8" y="11.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.2" font-weight="800" font-style="italic" font-family="Georgia, serif">i</text>'),
+            latex: '\\mathrm{cFactor}\\left(#?\\right)',
+            help: { desc: 'Factoriza un polinomio completamente incluyendo factores con coeficientes complejos.', syntaxLatex: '\\mathrm{cFactor}(\\text{expresión})', exampleLatex: '\\mathrm{cFactor}(x^2+4) \\to (x-2i)(x+2i)' }
+          },
+          {
+            shortcut: 'a', label: 'A: Ceros complejos',
+            iconSvg: menuIcon('<line x1="1.8" y1="8" x2="14.2" y2="8" stroke-width="1.2"/><line x1="6.2" y1="2" x2="6.2" y2="14" stroke-width="1.2"/><circle cx="10.8" cy="4.4" r="1.6" fill="currentColor" stroke="none"/><circle cx="10.8" cy="11.6" r="1.6" fill="currentColor" stroke="none"/>'),
+            latex: '\\mathrm{cZeros}\\left(#?, x\\right)',
+            help: { desc: 'Devuelve todas las raíces reales y complejas donde la expresión es igual a cero.', syntaxLatex: '\\mathrm{cZeros}(\\text{expresión},\\ x)', exampleLatex: '\\mathrm{cZeros}(x^2+1,\\ x) \\to \\{-i,\\ i\\}' }
+          }
         ]
       },
       {
@@ -3277,16 +3704,66 @@
         title: '4: Cálculo',
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M11 2.8c-.4-.7-1.4-.9-2-.2-.5.6-.7 1.7-.9 4l-.4 3.1c-.2 2.1-.4 3-.9 3.6-.6.7-1.6.5-2-.2"/></svg>',
         items: [
-          { shortcut: '1', label: '1: Derivada', iconSvg: menuIcon('<text x="8" y="6.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="7.2" font-weight="800" font-family="Segoe UI, Arial, sans-serif">d</text><line x1="2.8" y1="8.1" x2="13.2" y2="8.1" stroke-width="1.4"/><text x="8" y="14.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.8" font-weight="800" font-family="Segoe UI, Arial, sans-serif">dx</text>'), latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)' },
-          { shortcut: '2', label: '2: Derivada n-ésima', iconSvg: menuIcon('<text x="8" y="6.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.8" font-weight="800" font-family="Segoe UI, Arial, sans-serif">d<tspan dy="-2" font-size="4.6" font-style="italic">n</tspan></text><line x1="2.2" y1="8.2" x2="13.8" y2="8.2" stroke-width="1.4"/><text x="8" y="14.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">dx<tspan dy="-2" font-size="4.4" font-style="italic">n</tspan></text>'), latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)' },
-          { shortcut: '3', label: '3: Integral indefinida', iconSvg: menuIcon('<path d="M11 2.8c-.4-.7-1.4-.9-2-.2-.5.6-.7 1.7-.9 4l-.4 3.1c-.2 2.1-.4 3-.9 3.6-.6.7-1.6.5-2-.2" stroke-width="1.75"/>'), latex: '\\int \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}' },
-          { shortcut: '4', label: '4: Integral definida', iconSvg: menuIcon('<path d="M8.4 2.8c-.4-.7-1.3-.9-1.9-.2-.5.6-.6 1.7-.8 4l-.4 3.1c-.2 2.1-.4 3-.8 3.6-.5.7-1.5.5-1.9-.2" stroke-width="1.7"/><text x="12" y="5.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="5.8" font-weight="800" font-style="italic" font-family="Georgia, serif">b</text><text x="11.2" y="14.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="5.8" font-weight="800" font-style="italic" font-family="Georgia, serif">a</text>'), latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}' },
-          { shortcut: '5', label: '5: Límite', iconSvg: menuIcon('<text x="8" y="8.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="7.8" font-weight="800" font-family="Segoe UI, Arial, sans-serif">lim</text><line x1="3.4" y1="12.2" x2="12.4" y2="12.2" stroke-width="1.35"/><polyline points="10.2 10.3 12.6 12.2 10.2 14.1" stroke-width="1.35"/>'), latex: '\\lim_{#?\\to #?}\\left(#?\\right)' },
-          { shortcut: '6', label: '6: Sumatoria', iconSvg: menuIcon('<polyline points="12.5 3.6 12.5 2.4 3.5 2.4 8.8 8 3.5 13.6 12.5 13.6 12.5 12.4" stroke-width="1.6"/>'), latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)' },
-          { shortcut: '7', label: '7: Productoria', iconSvg: menuIcon('<line x1="2.4" y1="3" x2="13.6" y2="3" stroke-width="1.65"/><line x1="5" y1="3" x2="5" y2="13.4" stroke-width="1.65"/><line x1="11" y1="3" x2="11" y2="13.4" stroke-width="1.65"/><line x1="3.6" y1="13.4" x2="6.4" y2="13.4" stroke-width="1.3"/><line x1="9.6" y1="13.4" x2="12.4" y2="13.4" stroke-width="1.3"/>'), latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)' },
-          { shortcut: '8', label: '8: Polinomio de Taylor', iconSvg: menuIcon('<path d="M2 12.5C4.5 3.5 8 3.5 10.5 8.5S13.5 12.5 14.5 7.5" stroke-width="1.35"/><path d="M3 10.5Q8 2.2 13 10.5" stroke-width="1.3" stroke-dasharray="2.1 1.6"/><circle cx="7.4" cy="5.7" r="1.4" fill="currentColor" stroke="none"/>'), latex: '\\mathrm{taylor}\\left(#?, x, 5, 0\\right)' },
-          { shortcut: '9', label: '9: Ecuación diferencial', iconSvg: menuIcon('<text x="8" y="11.3" text-anchor="middle" fill="currentColor" stroke="none" font-size="9.6" font-weight="800" font-family="Segoe UI, Arial, sans-serif">dy</text>'), latex: "\\mathrm{deSolve}\\left(y'=#?, x, y\\right)" },
-          { shortcut: 'a', label: 'A: Derivación implícita', iconSvg: menuIcon('<ellipse cx="7.4" cy="8.8" rx="4.8" ry="3.8" stroke-width="1.4"/><line x1="6.2" y1="3.2" x2="14.2" y2="8.2" stroke-width="1.4"/><circle cx="10.2" cy="5.7" r="1.35" fill="currentColor" stroke="none"/>'), latex: '\\mathrm{impDiff}\\left(#?=#?, x, y\\right)' }
+          {
+            shortcut: '1', label: '1: Derivada',
+            iconSvg: menuIcon('<text x="8" y="6.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="7.2" font-weight="800" font-family="Segoe UI, Arial, sans-serif">d</text><line x1="2.8" y1="8.1" x2="13.2" y2="8.1" stroke-width="1.4"/><text x="8" y="14.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.8" font-weight="800" font-family="Segoe UI, Arial, sans-serif">dx</text>'),
+            latex: '\\frac{\\mathrm{d}}{\\mathrm{d}#?}\\left(#?\\right)',
+            help: { desc: 'Inserta la plantilla 2D de primera derivada respecto a la variable que indiques en el denominador.', syntaxLatex: '\\frac{\\mathrm{d}}{\\mathrm{d}\\square}(\\square)', exampleLatex: '\\frac{\\mathrm{d}}{\\mathrm{d}x}(x^3+2x) \\to 3x^2+2' }
+          },
+          {
+            shortcut: '2', label: '2: Derivada n-ésima',
+            iconSvg: menuIcon('<text x="8" y="6.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.8" font-weight="800" font-family="Segoe UI, Arial, sans-serif">d<tspan dy="-2" font-size="4.6" font-style="italic">n</tspan></text><line x1="2.2" y1="8.2" x2="13.8" y2="8.2" stroke-width="1.4"/><text x="8" y="14.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">dx<tspan dy="-2" font-size="4.4" font-style="italic">n</tspan></text>'),
+            latex: '\\frac{\\mathrm{d}^{#?}}{\\mathrm{d}#?^{#?}}\\left(#?\\right)',
+            help: { desc: 'Inserta la plantilla 2D de derivada de orden n (segunda, tercera, etc.) respecto a una variable.', syntaxLatex: '\\frac{\\mathrm{d}^{\\square}}{\\mathrm{d}\\square^{\\square}}(\\square)', exampleLatex: '\\frac{\\mathrm{d}^2}{\\mathrm{d}x^2}(\\sin(x)) \\to -\\sin(x)' }
+          },
+          {
+            shortcut: '3', label: '3: Integral indefinida',
+            iconSvg: menuIcon('<path d="M11 2.8c-.4-.7-1.4-.9-2-.2-.5.6-.7 1.7-.9 4l-.4 3.1c-.2 2.1-.4 3-.9 3.6-.6.7-1.6.5-2-.2" stroke-width="1.75"/>'),
+            latex: '\\int \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}',
+            help: { desc: 'Inserta la plantilla 2D para calcular la primitiva (antiderivada) simbólica de una función.', syntaxLatex: '\\int \\square\\,\\mathrm{d}\\square', exampleLatex: '\\int 2x\\,\\mathrm{d}x \\to x^2' }
+          },
+          {
+            shortcut: '4', label: '4: Integral definida',
+            iconSvg: menuIcon('<path d="M8.4 2.8c-.4-.7-1.3-.9-1.9-.2-.5.6-.6 1.7-.8 4l-.4 3.1c-.2 2.1-.4 3-.8 3.6-.5.7-1.5.5-1.9-.2" stroke-width="1.7"/><text x="12" y="5.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="5.8" font-weight="800" font-style="italic" font-family="Georgia, serif">b</text><text x="11.2" y="14.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="5.8" font-weight="800" font-style="italic" font-family="Georgia, serif">a</text>'),
+            latex: '\\int_{#?}^{#?} \\boxed{#?} \\, \\boxed{\\mathrm{d}#?}',
+            help: { desc: 'Inserta la plantilla 2D para integrar una función entre un límite inferior y un límite superior.', syntaxLatex: '\\int_{\\square}^{\\square} \\square\\,\\mathrm{d}\\square', exampleLatex: '\\int_{0}^{1} x^2\\,\\mathrm{d}x \\to \\frac{1}{3}' }
+          },
+          {
+            shortcut: '5', label: '5: Límite',
+            iconSvg: menuIcon('<text x="8" y="8.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="7.8" font-weight="800" font-family="Segoe UI, Arial, sans-serif">lim</text><line x1="3.4" y1="12.2" x2="12.4" y2="12.2" stroke-width="1.35"/><polyline points="10.2 10.3 12.6 12.2 10.2 14.1" stroke-width="1.35"/>'),
+            latex: '\\lim_{#?\\to #?}\\left(#?\\right)',
+            help: { desc: 'Inserta la plantilla 2D para evaluar el límite de una expresión cuando la variable tiende a un valor o a infinito.', syntaxLatex: '\\lim_{\\square\\to \\square}(\\square)', exampleLatex: '\\lim_{x\\to 0}\\!\\left(\\frac{\\sin(x)}{x}\\right) \\to 1' }
+          },
+          {
+            shortcut: '6', label: '6: Sumatoria',
+            iconSvg: menuIcon('<polyline points="12.5 3.6 12.5 2.4 3.5 2.4 8.8 8 3.5 13.6 12.5 13.6 12.5 12.4" stroke-width="1.6"/>'),
+            latex: '\\sum_{#?=#?}^{#?}\\left(#?\\right)',
+            help: { desc: 'Inserta la plantilla 2D de suma (notación sigma) desde un índice inicial hasta uno final.', syntaxLatex: '\\sum_{\\square=\\square}^{\\square}(\\square)', exampleLatex: '\\sum_{k=1}^{4}(k^2) \\to 30' }
+          },
+          {
+            shortcut: '7', label: '7: Productoria',
+            iconSvg: menuIcon('<line x1="2.4" y1="3" x2="13.6" y2="3" stroke-width="1.65"/><line x1="5" y1="3" x2="5" y2="13.4" stroke-width="1.65"/><line x1="11" y1="3" x2="11" y2="13.4" stroke-width="1.65"/><line x1="3.6" y1="13.4" x2="6.4" y2="13.4" stroke-width="1.3"/><line x1="9.6" y1="13.4" x2="12.4" y2="13.4" stroke-width="1.3"/>'),
+            latex: '\\prod_{#?=#?}^{#?}\\left(#?\\right)',
+            help: { desc: 'Inserta la plantilla 2D de producto iterado (notación pi) sobre un rango de índices.', syntaxLatex: '\\prod_{\\square=\\square}^{\\square}(\\square)', exampleLatex: '\\prod_{k=1}^{4}(k) \\to 24' }
+          },
+          {
+            shortcut: '8', label: '8: Polinomio de Taylor',
+            iconSvg: menuIcon('<path d="M2 12.5C4.5 3.5 8 3.5 10.5 8.5S13.5 12.5 14.5 7.5" stroke-width="1.35"/><path d="M3 10.5Q8 2.2 13 10.5" stroke-width="1.3" stroke-dasharray="2.1 1.6"/><circle cx="7.4" cy="5.7" r="1.4" fill="currentColor" stroke="none"/>'),
+            latex: '\\mathrm{taylor}\\left(#?, x, 5, 0\\right)',
+            help: { desc: 'Genera el polinomio de Taylor de la expresión respecto a la variable, hasta el grado indicado y centrado en un punto.', syntaxLatex: '\\mathrm{taylor}(\\text{expr},\\ x,\\ \\text{grado},\\ \\text{centro})', exampleLatex: '\\mathrm{taylor}(e^x,\\ x,\\ 3,\\ 0) \\to 1+x+\\frac{x^2}{2}+\\frac{x^3}{6}' }
+          },
+          {
+            shortcut: '9', label: '9: Ecuación diferencial',
+            iconSvg: menuIcon('<text x="8" y="11.3" text-anchor="middle" fill="currentColor" stroke="none" font-size="9.6" font-weight="800" font-family="Segoe UI, Arial, sans-serif">dy</text>'),
+            latex: "\\mathrm{deSolve}\\left(y'=#?, x, y\\right)",
+            help: { desc: 'Resuelve ecuaciones diferenciales ordinarias (EDO) escritas con y\' en función de x e y.', syntaxLatex: "\\mathrm{deSolve}(y'=\\square,\\ x,\\ y)", exampleLatex: "\\mathrm{deSolve}(y'=y,\\ x,\\ y) \\to c_0 e^x" }
+          },
+          {
+            shortcut: 'a', label: 'A: Derivación implícita',
+            iconSvg: menuIcon('<ellipse cx="7.4" cy="8.8" rx="4.8" ry="3.8" stroke-width="1.4"/><line x1="6.2" y1="3.2" x2="14.2" y2="8.2" stroke-width="1.4"/><circle cx="10.2" cy="5.7" r="1.35" fill="currentColor" stroke="none"/>'),
+            latex: '\\mathrm{impDiff}\\left(#?=#?, x, y\\right)',
+            help: { desc: 'Calcula dy/dx para una relación implícita entre x e y sin necesidad de despejar y previamente.', syntaxLatex: '\\mathrm{impDiff}(\\text{ecuación},\\ x,\\ y)', exampleLatex: '\\mathrm{impDiff}(x^2+y^2=1,\\ x,\\ y) \\to -\\frac{x}{y}' }
+          }
         ]
       },
       {
@@ -3294,9 +3771,24 @@
         title: '5: Probabilidad',
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2.3"/><circle cx="5.2" cy="5.2" r="1.05" fill="currentColor" stroke="none"/><circle cx="10.8" cy="5.2" r="1.05" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.05" fill="currentColor" stroke="none"/><circle cx="5.2" cy="10.8" r="1.05" fill="currentColor" stroke="none"/><circle cx="10.8" cy="10.8" r="1.05" fill="currentColor" stroke="none"/></svg>',
         items: [
-          { shortcut: '1', label: '1: Factorial', iconSvg: menuIcon('<text x="5.4" y="12" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.2" font-weight="800" font-style="italic" font-family="Georgia, serif">n</text><line x1="11.4" y1="3.2" x2="11.4" y2="9.5" stroke-width="1.9"/><circle cx="11.4" cy="12.4" r="1.15" fill="currentColor" stroke="none"/>'), latex: '!' },
-          { shortcut: '2', label: '2: Permutaciones', iconSvg: menuIcon('<text x="3.1" y="13" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-style="italic" font-family="Georgia, serif">n</text><text x="8" y="11.5" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">P</text><text x="12.9" y="13" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-style="italic" font-family="Georgia, serif">r</text>'), latex: '\\mathrm{nPr}\\left(#?, #?\\right)' },
-          { shortcut: '3', label: '3: Combinaciones', iconSvg: menuIcon('<text x="3.1" y="13" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-style="italic" font-family="Georgia, serif">n</text><text x="8" y="11.5" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">C</text><text x="12.9" y="13" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-style="italic" font-family="Georgia, serif">r</text>'), latex: '\\mathrm{nCr}\\left(#?, #?\\right)' },
+          {
+            shortcut: '1', label: '1: Factorial',
+            iconSvg: menuIcon('<text x="5.4" y="12" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.2" font-weight="800" font-style="italic" font-family="Georgia, serif">n</text><line x1="11.4" y1="3.2" x2="11.4" y2="9.5" stroke-width="1.9"/><circle cx="11.4" cy="12.4" r="1.15" fill="currentColor" stroke="none"/>'),
+            latex: '!',
+            help: { desc: 'Inserta el operador factorial (!), que multiplica todos los enteros positivos desde 1 hasta n.', syntaxLatex: 'n!', exampleLatex: '5! \\to 120' }
+          },
+          {
+            shortcut: '2', label: '2: Permutaciones',
+            iconSvg: menuIcon('<text x="3.1" y="13" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-style="italic" font-family="Georgia, serif">n</text><text x="8" y="11.5" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">P</text><text x="12.9" y="13" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-style="italic" font-family="Georgia, serif">r</text>'),
+            latex: '\\mathrm{nPr}\\left(#?, #?\\right)',
+            help: { desc: 'Calcula el número de formas de ordenar r elementos tomados de un total de n (importa el orden).', syntaxLatex: '\\mathrm{nPr}(n,\\ r)', exampleLatex: '\\mathrm{nPr}(5,\\ 2) \\to 20' }
+          },
+          {
+            shortcut: '3', label: '3: Combinaciones',
+            iconSvg: menuIcon('<text x="3.1" y="13" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-style="italic" font-family="Georgia, serif">n</text><text x="8" y="11.5" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">C</text><text x="12.9" y="13" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-style="italic" font-family="Georgia, serif">r</text>'),
+            latex: '\\mathrm{nCr}\\left(#?, #?\\right)',
+            help: { desc: 'Calcula el coeficiente binomial: formas de elegir r elementos de n sin importar el orden.', syntaxLatex: '\\mathrm{nCr}(n,\\ r)', exampleLatex: '\\mathrm{nCr}(5,\\ 2) \\to 10' }
+          },
           { shortcut: '4', label: '4: Distribuciones', iconSvg: menuIcon('<line x1="1.6" y1="12.8" x2="14.4" y2="12.8" stroke-width="1.2"/><path d="M2 12.6C4.4 12.6 5.6 3.2 8 3.2S11.6 12.6 14 12.6" stroke-width="1.6"/>'), hasSubmenu: true, keepModalOpen: true, action: () => openDistributionsSubmenu(() => openCategorySubmenu(4)) }
         ]
       },
@@ -3305,12 +3797,42 @@
         title: '6: Estadística',
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="2" y="12.5" width="12" height="1.4" rx="0.5"/><rect x="3" y="7.5" width="2.4" height="4.5" rx="0.5"/><rect x="6.8" y="3.2" width="2.4" height="8.8" rx="0.5"/><rect x="10.6" y="5.5" width="2.4" height="6.5" rx="0.5"/></svg>',
         items: [
-          { shortcut: '1', label: '1: Media', iconSvg: menuIcon('<line x1="4.4" y1="3.4" x2="11.6" y2="3.4" stroke-width="1.55"/><text x="8" y="13.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="11" font-weight="800" font-style="italic" font-family="Georgia, serif">x</text>'), latex: '\\mathrm{mean}\\left(\\left[#?, #?\\right]\\right)' },
-          { shortcut: '2', label: '2: Mediana', iconSvg: menuIcon('<line x1="1.6" y1="8" x2="4.4" y2="8" stroke-width="1.35"/><line x1="11.6" y1="8" x2="14.4" y2="8" stroke-width="1.35"/><line x1="1.6" y1="5.5" x2="1.6" y2="10.5" stroke-width="1.35"/><line x1="14.4" y1="5.5" x2="14.4" y2="10.5" stroke-width="1.35"/><rect x="4.4" y="4.2" width="7.2" height="7.6" rx="1" stroke-width="1.35"/><line x1="8" y1="4.2" x2="8" y2="11.8" stroke-width="2"/>'), latex: '\\mathrm{median}\\left(\\left[#?, #?\\right]\\right)' },
-          { shortcut: '3', label: '3: Desv. estándar muestral', iconSvg: menuIcon('<text x="6.6" y="11.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="11.2" font-weight="800" font-style="italic" font-family="Georgia, serif">s</text><text x="11.4" y="13.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.2" font-weight="800" font-style="italic" font-family="Georgia, serif">x</text>'), latex: '\\mathrm{stDevSamp}\\left(\\left[#?, #?\\right]\\right)' },
-          { shortcut: '4', label: '4: Desv. estándar poblacional', iconSvg: menuIcon('<text x="6.8" y="11.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="11" font-weight="800" font-style="italic" font-family="Georgia, serif">σ</text><text x="11.8" y="13.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.2" font-weight="800" font-style="italic" font-family="Georgia, serif">x</text>'), latex: '\\mathrm{stDevPop}\\left(\\left[#?, #?\\right]\\right)' },
-          { shortcut: '5', label: '5: Varianza muestral', iconSvg: menuIcon('<text x="6.4" y="12.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="11" font-weight="800" font-style="italic" font-family="Georgia, serif">s</text><text x="11.4" y="6.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">2</text>'), latex: '\\mathrm{varSamp}\\left(\\left[#?, #?\\right]\\right)' },
-          { shortcut: '6', label: '6: Varianza poblacional', iconSvg: menuIcon('<text x="6.4" y="12.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="11" font-weight="800" font-style="italic" font-family="Georgia, serif">σ</text><text x="11.6" y="6.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">2</text>'), latex: '\\mathrm{varPop}\\left(\\left[#?, #?\\right]\\right)' }
+          {
+            shortcut: '1', label: '1: Media',
+            iconSvg: menuIcon('<line x1="4.4" y1="3.4" x2="11.6" y2="3.4" stroke-width="1.55"/><text x="8" y="13.2" text-anchor="middle" fill="currentColor" stroke="none" font-size="11" font-weight="800" font-style="italic" font-family="Georgia, serif">x</text>'),
+            latex: '\\mathrm{mean}\\left(\\left[#?, #?\\right]\\right)',
+            help: { desc: 'Calcula el promedio aritmético de una lista de valores entre corchetes.', syntaxLatex: '\\mathrm{mean}([x_1,\\ x_2,\\ \\dots])', exampleLatex: '\\mathrm{mean}([2,\\ 4,\\ 9]) \\to 5' }
+          },
+          {
+            shortcut: '2', label: '2: Mediana',
+            iconSvg: menuIcon('<line x1="1.6" y1="8" x2="4.4" y2="8" stroke-width="1.35"/><line x1="11.6" y1="8" x2="14.4" y2="8" stroke-width="1.35"/><line x1="1.6" y1="5.5" x2="1.6" y2="10.5" stroke-width="1.35"/><line x1="14.4" y1="5.5" x2="14.4" y2="10.5" stroke-width="1.35"/><rect x="4.4" y="4.2" width="7.2" height="7.6" rx="1" stroke-width="1.35"/><line x1="8" y1="4.2" x2="8" y2="11.8" stroke-width="2"/>'),
+            latex: '\\mathrm{median}\\left(\\left[#?, #?\\right]\\right)',
+            help: { desc: 'Devuelve el valor central de una lista ordenada de datos (o el promedio de los dos centrales si la cantidad es par).', syntaxLatex: '\\mathrm{median}([x_1,\\ x_2,\\ \\dots])', exampleLatex: '\\mathrm{median}([1,\\ 3,\\ 7,\\ 9]) \\to 5' }
+          },
+          {
+            shortcut: '3', label: '3: Desv. estándar muestral',
+            iconSvg: menuIcon('<text x="6.6" y="11.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="11.2" font-weight="800" font-style="italic" font-family="Georgia, serif">s</text><text x="11.4" y="13.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.2" font-weight="800" font-style="italic" font-family="Georgia, serif">x</text>'),
+            latex: '\\mathrm{stDevSamp}\\left(\\left[#?, #?\\right]\\right)',
+            help: { desc: 'Calcula la desviación estándar muestral (con denominador n − 1) de una lista de datos.', syntaxLatex: '\\mathrm{stDevSamp}([x_1,\\ x_2,\\ \\dots])', exampleLatex: '\\mathrm{stDevSamp}([2,\\ 4,\\ 6]) \\to 2' }
+          },
+          {
+            shortcut: '4', label: '4: Desv. estándar poblacional',
+            iconSvg: menuIcon('<text x="6.8" y="11.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="11" font-weight="800" font-style="italic" font-family="Georgia, serif">σ</text><text x="11.8" y="13.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.2" font-weight="800" font-style="italic" font-family="Georgia, serif">x</text>'),
+            latex: '\\mathrm{stDevPop}\\left(\\left[#?, #?\\right]\\right)',
+            help: { desc: 'Calcula la desviación estándar poblacional (con denominador n) de una lista de datos.', syntaxLatex: '\\mathrm{stDevPop}([x_1,\\ x_2,\\ \\dots])', exampleLatex: '\\mathrm{stDevPop}([2,\\ 4,\\ 6]) \\to \\sqrt{\\tfrac{8}{3}}' }
+          },
+          {
+            shortcut: '5', label: '5: Varianza muestral',
+            iconSvg: menuIcon('<text x="6.4" y="12.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="11" font-weight="800" font-style="italic" font-family="Georgia, serif">s</text><text x="11.4" y="6.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">2</text>'),
+            latex: '\\mathrm{varSamp}\\left(\\left[#?, #?\\right]\\right)',
+            help: { desc: 'Calcula la varianza muestral s² (con denominador n − 1) de una lista de datos.', syntaxLatex: '\\mathrm{varSamp}([x_1,\\ x_2,\\ \\dots])', exampleLatex: '\\mathrm{varSamp}([2,\\ 4,\\ 6]) \\to 4' }
+          },
+          {
+            shortcut: '6', label: '6: Varianza poblacional',
+            iconSvg: menuIcon('<text x="6.4" y="12.6" text-anchor="middle" fill="currentColor" stroke="none" font-size="11" font-weight="800" font-style="italic" font-family="Georgia, serif">σ</text><text x="11.6" y="6.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">2</text>'),
+            latex: '\\mathrm{varPop}\\left(\\left[#?, #?\\right]\\right)',
+            help: { desc: 'Calcula la varianza poblacional σ² (con denominador n) de una lista de datos.', syntaxLatex: '\\mathrm{varPop}([x_1,\\ x_2,\\ \\dots])', exampleLatex: '\\mathrm{varPop}([2,\\ 4,\\ 6]) \\to \\frac{8}{3}' }
+          }
         ]
       },
       {
@@ -3318,16 +3840,67 @@
         title: '7: Matriz y Vector',
         iconSvg: '<svg class="menu-cat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 2.5H2.5v11h2M11.5 2.5h2v11h-2"/><circle cx="6" cy="5.7" r="1.05" fill="currentColor" stroke="none"/><circle cx="10" cy="5.7" r="1.05" fill="currentColor" stroke="none"/><circle cx="6" cy="10.3" r="1.05" fill="currentColor" stroke="none"/><circle cx="10" cy="10.3" r="1.05" fill="currentColor" stroke="none"/></svg>',
         items: [
-          { shortcut: '1', label: '1: Matriz n×m', iconSvg: menuIcon('<path d="M4.2 2.4H2.2v11.2h2M11.8 2.4h2v11.2h-2" stroke-width="1.35"/><circle cx="5.4" cy="5" r="0.9" fill="currentColor" stroke="none"/><circle cx="8" cy="5" r="0.9" fill="currentColor" stroke="none"/><circle cx="10.6" cy="5" r="0.9" fill="currentColor" stroke="none"/><circle cx="5.4" cy="8" r="0.9" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="0.9" fill="currentColor" stroke="none"/><circle cx="10.6" cy="8" r="0.9" fill="currentColor" stroke="none"/><circle cx="5.4" cy="11" r="0.9" fill="currentColor" stroke="none"/><circle cx="8" cy="11" r="0.9" fill="currentColor" stroke="none"/><circle cx="10.6" cy="11" r="0.9" fill="currentColor" stroke="none"/>'), keepModalOpen: true, action: () => openCustomMatrixModal(() => openCategorySubmenu(6)) },
-          { shortcut: '2', label: '2: Matriz identidad', iconSvg: menuIcon('<path d="M4.5 2.5H2.5v11h2M11.5 2.5h2v11h-2" stroke-width="1.4"/><line x1="6.4" y1="4.6" x2="9.6" y2="4.6" stroke-width="1.45"/><line x1="8" y1="4.6" x2="8" y2="11.4" stroke-width="1.55"/><line x1="6.4" y1="11.4" x2="9.6" y2="11.4" stroke-width="1.45"/>'), latex: '\\mathrm{identity}\\left(3\\right)' },
-          { shortcut: '3', label: '3: Traspuesta', iconSvg: menuIcon('<text x="6" y="12.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.2" font-weight="800" font-family="Segoe UI, Arial, sans-serif">A</text><text x="11.8" y="6.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">T</text>'), latex: '\\mathrm{transpose}\\left(#?\\right)' },
-          { shortcut: '4', label: '4: Determinante', iconSvg: menuIcon('<line x1="3" y1="2.4" x2="3" y2="13.6" stroke-width="1.5"/><line x1="13" y1="2.4" x2="13" y2="13.6" stroke-width="1.5"/><text x="8" y="11.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="9.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">A</text>'), latex: '\\mathrm{det}\\left(#?\\right)' },
-          { shortcut: '5', label: '5: Forma escalonada', iconSvg: menuIcon('<path d="M4.2 2.4H2.2v11.2h2M11.8 2.4h2v11.2h-2" stroke-width="1.35"/><polygon points="4.4,3.4 11.6,3.4 11.6,12.6" fill="currentColor" stroke="none"/>'), latex: '\\mathrm{ref}\\left(#?\\right)' },
-          { shortcut: '6', label: '6: Forma escalonada reducida', iconSvg: menuIcon('<path d="M4.2 2.4H2.2v11.2h2M11.8 2.4h2v11.2h-2" stroke-width="1.35"/><line x1="4.8" y1="3.8" x2="11.2" y2="12.2" stroke-width="2.1"/>'), latex: '\\mathrm{rref}\\left(#?\\right)' },
-          { shortcut: '7', label: '7: Autovalores', iconSvg: menuIcon('<path d="M4.2 3.2c1.1 0 1.8.4 2.3 1.8l3.8 8.4c.3.6.9.7 1.5.5" stroke-width="1.65"/><line x1="7.7" y1="7.6" x2="4.2" y2="13.6" stroke-width="1.65"/>'), latex: '\\mathrm{eigVl}\\left(#?\\right)' },
-          { shortcut: '8', label: '8: Autovectores', iconSvg: menuIcon('<line x1="4.4" y1="3.4" x2="11.8" y2="3.4" stroke-width="1.35"/><polyline points="9.8 1.9 12 3.4 9.8 4.9" stroke-width="1.35"/><text x="8" y="13.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.4" font-weight="800" font-style="italic" font-family="Georgia, serif">v</text>'), latex: '\\mathrm{eigVc}\\left(#?\\right)' },
-          { shortcut: '9', label: '9: Producto escalar', iconSvg: menuIcon('<circle cx="8" cy="8" r="2.6" fill="currentColor" stroke="none"/>'), latex: '\\mathrm{dotP}\\left(\\left[#?, #?\\right], \\left[#?, #?\\right]\\right)' },
-          { shortcut: 'a', label: 'A: Producto cruz', iconSvg: menuIcon('<path d="M4.4 4.4L11.6 11.6M11.6 4.4L4.4 11.6" stroke-width="2.15"/>'), latex: '\\mathrm{crossP}\\left(\\left[#?, #?, #?\\right], \\left[#?, #?, #?\\right]\\right)' }
+          {
+            shortcut: '1', label: '1: Matriz n×m',
+            iconSvg: menuIcon('<path d="M4.2 2.4H2.2v11.2h2M11.8 2.4h2v11.2h-2" stroke-width="1.35"/><circle cx="5.4" cy="5" r="0.9" fill="currentColor" stroke="none"/><circle cx="8" cy="5" r="0.9" fill="currentColor" stroke="none"/><circle cx="10.6" cy="5" r="0.9" fill="currentColor" stroke="none"/><circle cx="5.4" cy="8" r="0.9" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="0.9" fill="currentColor" stroke="none"/><circle cx="10.6" cy="8" r="0.9" fill="currentColor" stroke="none"/><circle cx="5.4" cy="11" r="0.9" fill="currentColor" stroke="none"/><circle cx="8" cy="11" r="0.9" fill="currentColor" stroke="none"/><circle cx="10.6" cy="11" r="0.9" fill="currentColor" stroke="none"/>'),
+            keepModalOpen: true,
+            action: () => openCustomMatrixModal(() => openCategorySubmenu(6)),
+            help: { desc: 'Abre el asistente para elegir filas y columnas e insertar una matriz editable 2D.', syntaxLabel: 'Asistente visual', syntaxLatex: '\\begin{bmatrix}\\square & \\square \\\\ \\square & \\square\\end{bmatrix}_{n\\times m}', exampleText: 'Elige filas (1–9) y columnas (1–9), confirma y rellena cada casilla con Tab o flechas.' }
+          },
+          {
+            shortcut: '2', label: '2: Matriz identidad',
+            iconSvg: menuIcon('<path d="M4.5 2.5H2.5v11h2M11.5 2.5h2v11h-2" stroke-width="1.4"/><line x1="6.4" y1="4.6" x2="9.6" y2="4.6" stroke-width="1.45"/><line x1="8" y1="4.6" x2="8" y2="11.4" stroke-width="1.55"/><line x1="6.4" y1="11.4" x2="9.6" y2="11.4" stroke-width="1.45"/>'),
+            latex: '\\mathrm{identity}\\left(3\\right)',
+            help: { desc: 'Genera una matriz identidad cuadrada de tamaño n × n (unos en la diagonal principal y ceros fuera).', syntaxLatex: '\\mathrm{identity}(n)', exampleLatex: '\\mathrm{identity}(2) \\to \\begin{bmatrix}1 & 0 \\\\ 0 & 1\\end{bmatrix}' }
+          },
+          {
+            shortcut: '3', label: '3: Traspuesta',
+            iconSvg: menuIcon('<text x="6" y="12.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.2" font-weight="800" font-family="Segoe UI, Arial, sans-serif">A</text><text x="11.8" y="6.8" text-anchor="middle" fill="currentColor" stroke="none" font-size="6.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">T</text>'),
+            latex: '\\mathrm{transpose}\\left(#?\\right)',
+            help: { desc: 'Intercambia las filas por las columnas de una matriz dada.', syntaxLatex: '\\mathrm{transpose}(A)', exampleLatex: '\\mathrm{transpose}\\!\\left(\\begin{bmatrix}1 & 2 \\\\ 3 & 4\\end{bmatrix}\\right) \\to \\begin{bmatrix}1 & 3 \\\\ 2 & 4\\end{bmatrix}' }
+          },
+          {
+            shortcut: '4', label: '4: Determinante',
+            iconSvg: menuIcon('<line x1="3" y1="2.4" x2="3" y2="13.6" stroke-width="1.5"/><line x1="13" y1="2.4" x2="13" y2="13.6" stroke-width="1.5"/><text x="8" y="11.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="9.4" font-weight="800" font-family="Segoe UI, Arial, sans-serif">A</text>'),
+            latex: '\\mathrm{det}\\left(#?\\right)',
+            help: { desc: 'Calcula el determinante de una matriz cuadrada.', syntaxLatex: '\\mathrm{det}(A)', exampleLatex: '\\mathrm{det}\\!\\left(\\begin{bmatrix}1 & 2 \\\\ 3 & 4\\end{bmatrix}\\right) \\to -2' }
+          },
+          {
+            shortcut: '5', label: '5: Forma escalonada',
+            iconSvg: menuIcon('<path d="M4.2 2.4H2.2v11.2h2M11.8 2.4h2v11.2h-2" stroke-width="1.35"/><polygon points="4.4,3.4 11.6,3.4 11.6,12.6" fill="currentColor" stroke="none"/>'),
+            latex: '\\mathrm{ref}\\left(#?\\right)',
+            help: { desc: 'Reduce una matriz a su forma escalonada por filas mediante eliminación gaussiana.', syntaxLatex: '\\mathrm{ref}(A)', exampleLatex: '\\mathrm{ref}\\!\\left(\\begin{bmatrix}1 & 2 \\\\ 2 & 5\\end{bmatrix}\\right) \\to \\begin{bmatrix}1 & 2 \\\\ 0 & 1\\end{bmatrix}' }
+          },
+          {
+            shortcut: '6', label: '6: Forma escalonada reducida',
+            iconSvg: menuIcon('<path d="M4.2 2.4H2.2v11.2h2M11.8 2.4h2v11.2h-2" stroke-width="1.35"/><line x1="4.8" y1="3.8" x2="11.2" y2="12.2" stroke-width="2.1"/>'),
+            latex: '\\mathrm{rref}\\left(#?\\right)',
+            help: { desc: 'Aplica Gauss-Jordan para llevar una matriz a su forma escalonada reducida (pivotes iguales a 1 y ceros arriba y abajo).', syntaxLatex: '\\mathrm{rref}(A)', exampleLatex: '\\mathrm{rref}\\!\\left(\\begin{bmatrix}1 & 2 & 5 \\\\ 0 & 1 & 2\\end{bmatrix}\\right) \\to \\begin{bmatrix}1 & 0 & 1 \\\\ 0 & 1 & 2\\end{bmatrix}' }
+          },
+          {
+            shortcut: '7', label: '7: Autovalores',
+            iconSvg: menuIcon('<path d="M4.2 3.2c1.1 0 1.8.4 2.3 1.8l3.8 8.4c.3.6.9.7 1.5.5" stroke-width="1.65"/><line x1="7.7" y1="7.6" x2="4.2" y2="13.6" stroke-width="1.65"/>'),
+            latex: '\\mathrm{eigVl}\\left(#?\\right)',
+            help: { desc: 'Calcula la lista de valores propios (autovalores λ) de una matriz cuadrada.', syntaxLatex: '\\mathrm{eigVl}(A)', exampleLatex: '\\mathrm{eigVl}\\!\\left(\\begin{bmatrix}2 & 0 \\\\ 0 & 5\\end{bmatrix}\\right) \\to [2,\\ 5]' }
+          },
+          {
+            shortcut: '8', label: '8: Autovectores',
+            iconSvg: menuIcon('<line x1="4.4" y1="3.4" x2="11.8" y2="3.4" stroke-width="1.35"/><polyline points="9.8 1.9 12 3.4 9.8 4.9" stroke-width="1.35"/><text x="8" y="13.4" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.4" font-weight="800" font-style="italic" font-family="Georgia, serif">v</text>'),
+            latex: '\\mathrm{eigVc}\\left(#?\\right)',
+            help: { desc: 'Calcula los vectores propios asociados a los autovalores de una matriz cuadrada (dispuestos por columnas).', syntaxLatex: '\\mathrm{eigVc}(A)', exampleLatex: '\\mathrm{eigVc}\\!\\left(\\begin{bmatrix}2 & 0 \\\\ 0 & 5\\end{bmatrix}\\right)' }
+          },
+          {
+            shortcut: '9', label: '9: Producto escalar',
+            iconSvg: menuIcon('<circle cx="8" cy="8" r="2.6" fill="currentColor" stroke="none"/>'),
+            latex: '\\mathrm{dotP}\\left(\\left[#?, #?\\right], \\left[#?, #?\\right]\\right)',
+            help: { desc: 'Calcula el producto punto (escalar) entre dos vectores de igual longitud ingresados como listas.', syntaxLatex: '\\mathrm{dotP}([u_1,\\ u_2],\\ [v_1,\\ v_2])', exampleLatex: '\\mathrm{dotP}([1,\\ 2],\\ [3,\\ 4]) \\to 11' }
+          },
+          {
+            shortcut: 'a', label: 'A: Producto cruz',
+            iconSvg: menuIcon('<path d="M4.4 4.4L11.6 11.6M11.6 4.4L4.4 11.6" stroke-width="2.15"/>'),
+            latex: '\\mathrm{crossP}\\left(\\left[#?, #?, #?\\right], \\left[#?, #?, #?\\right]\\right)',
+            help: { desc: 'Calcula el producto vectorial (cruz) entre dos vectores tridimensionales, devolviendo un vector perpendicular a ambos.', syntaxLatex: '\\mathrm{crossP}([u_1,\\ u_2,\\ u_3],\\ [v_1,\\ v_2,\\ v_3])', exampleLatex: '\\mathrm{crossP}([1,\\ 0,\\ 0],\\ [0,\\ 1,\\ 0]) \\to [0,\\ 0,\\ 1]' }
+          }
         ]
       }
     ];
@@ -3342,7 +3915,13 @@
           row.dataset.hasSubmenu = 'true';
           row.dataset.shortcut = cat.shortcut;
           row.innerHTML = `<span class="menu-cat-left">${cat.iconSvg || ''}<span>${cat.title}</span></span><span>▸</span>`;
-          row.addEventListener('click', () => openCategorySubmenu(catIdx));
+          row.addEventListener('click', (e) => {
+            if (e.ctrlKey || e.metaKey || ctrlActive) {
+              setCtrl(false);
+              return;
+            }
+            openCategorySubmenu(catIdx);
+          });
           list.appendChild(row);
         });
         body.appendChild(list);
@@ -3357,7 +3936,7 @@
           const subList = document.createElement('div');
           subList.className = 'menu-list';
 
-          cat.items.forEach((item) => {
+          cat.items.forEach((item, idx) => {
             const subRow = document.createElement('div');
             subRow.className = 'menu-row';
             if (item.shortcut) subRow.dataset.shortcut = item.shortcut;
@@ -3367,8 +3946,25 @@
               subRow.innerHTML = `${leftHtml}<span>▸</span>`;
             } else {
               subRow.innerHTML = leftHtml;
+              if (item.help) {
+                subRow.openHelp = () => openHelpPopover({
+                  title: item.label,
+                  iconSvg: item.iconSvg,
+                  ...item.help
+                });
+              }
             }
-            subRow.addEventListener('click', () => {
+            subRow.addEventListener('click', (e) => {
+              const wantHelp = e.ctrlKey || e.metaKey || ctrlActive;
+              if (wantHelp) {
+                setCtrl(false);
+                if (typeof subRow.openHelp === 'function') {
+                  modalNav.focusIndex = idx;
+                  updateModalFocus();
+                  subRow.openHelp();
+                }
+                return;
+              }
               if (!item.keepModalOpen) closeModal();
               if (item.action) item.action();
               else insertLatex(item.latex);
@@ -4092,6 +4688,18 @@
     // DESPACHADOR CENTRAL DE TODAS LAS TECLAS DE LA CARCASA
     // =========================================================
     function handleHardwareKey(keyId) {
+      if (isHelpPopoverOpen) {
+        if (keyId === 'esc') {
+          setCtrl(false);
+          closeHelpPopover();
+        } else if (keyId === 'up') {
+          helpBodyEl.scrollTop -= 28;
+        } else if (keyId === 'down') {
+          helpBodyEl.scrollTop += 28;
+        }
+        return;
+      }
+
       const isCtrl = ctrlActive;
       if (keyId !== 'ctrl') {
         setCtrl(false);
@@ -4246,7 +4854,7 @@
             if (typeof modalNav.onKeyAction === 'function') {
               modalNav.onKeyAction('ENTER');
             } else {
-              activateFocusedModalItem();
+              activateFocusedModalItem(isCtrl);
             }
             return;
           }
@@ -4421,8 +5029,12 @@
           return;
 
         case 'enter':
-          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
-            modalNav.onKeyAction('ENTER');
+          if (modalNav.isOpen) {
+            if (typeof modalNav.onKeyAction === 'function') {
+              modalNav.onKeyAction('ENTER');
+            } else {
+              activateFocusedModalItem(isCtrl);
+            }
             return;
           }
           evaluateCurrentInput(isCtrl);
@@ -4454,8 +5066,12 @@
           return;
 
         case 'return':
-          if (modalNav.isOpen && typeof modalNav.onKeyAction === 'function') {
-            modalNav.onKeyAction('ENTER');
+          if (modalNav.isOpen) {
+            if (typeof modalNav.onKeyAction === 'function') {
+              modalNav.onKeyAction('ENTER');
+            } else {
+              activateFocusedModalItem(isCtrl);
+            }
             return;
           }
           evaluateCurrentInput(false);
@@ -4495,6 +5111,8 @@
     // Conectar botones numéricos 0–9 (sirven también como atajos 1–9 cuando el menú está abierto)
     document.querySelectorAll('[data-digit]').forEach((el) => {
       el.addEventListener('click', () => {
+        if (isHelpPopoverOpen) return;
+        const wasCtrl = ctrlActive;
         setCtrl(false);
         const digit = el.dataset.digit;
         if (modalNav.isOpen) {
@@ -4509,7 +5127,18 @@
           if (modalNav.mode === 'list') {
             const match = modalNav.items.find((it) => it.dataset.shortcut === digit);
             if (match) {
-              match.click();
+              if (wasCtrl) {
+                if (typeof match.openHelp === 'function') {
+                  const matchIdx = modalNav.items.indexOf(match);
+                  if (matchIdx >= 0) {
+                    modalNav.focusIndex = matchIdx;
+                    updateModalFocus();
+                  }
+                  match.openHelp();
+                }
+              } else {
+                match.click();
+              }
               return;
             }
           }
@@ -4521,6 +5150,8 @@
     // Conectar botones alfabéticos A–Z (sirven también como atajos A–D cuando el menú está abierto)
     document.querySelectorAll('[data-letter]').forEach((el) => {
       el.addEventListener('click', () => {
+        if (isHelpPopoverOpen) return;
+        const wasCtrl = ctrlActive;
         setCtrl(false);
         const rawLetter = el.dataset.letter;
         if (modalNav.isOpen && modalNav.mode === 'list') {
@@ -4532,7 +5163,18 @@
           }
           const match = modalNav.items.find((it) => it.dataset.shortcut === rawLetter.toLowerCase());
           if (match) {
-            match.click();
+            if (wasCtrl) {
+              if (typeof match.openHelp === 'function') {
+                const matchIdx = modalNav.items.indexOf(match);
+                if (matchIdx >= 0) {
+                  modalNav.focusIndex = matchIdx;
+                  updateModalFocus();
+                }
+                match.openHelp();
+              }
+            } else {
+              match.click();
+            }
             return;
           }
         }
@@ -4545,6 +5187,22 @@
     // Soporte de teclado físico de computador (incluyendo navegación del menú, historial y plantillas 2D)
     window.addEventListener('keydown', (e) => {
       if (modalNav.isOpen) {
+        if (isHelpPopoverOpen) {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            setCtrl(false);
+            closeHelpPopover();
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            helpBodyEl.scrollTop += 28;
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            helpBodyEl.scrollTop -= 28;
+          } else {
+            e.preventDefault();
+          }
+          return;
+        }
         if (typeof modalNav.onKeyAction === 'function') {
           if (e.key === 'Backspace') { e.preventDefault(); modalNav.onKeyAction('BACKSPACE'); return; }
           if (e.key === 'Tab') { e.preventDefault(); moveModalFocus(e.shiftKey ? 'up' : 'down'); return; }
@@ -4566,11 +5224,24 @@
           modalNav.onDigit(Number(e.key));
           return;
         }
-        if (modalNav.mode === 'list' && !e.ctrlKey && !e.metaKey && !e.altKey && /^[1-9a-dA-D]$/.test(e.key)) {
+        if (modalNav.mode === 'list' && !e.altKey && /^[1-9a-dA-D]$/.test(e.key)) {
           const match = modalNav.items.find((it) => it.dataset.shortcut === e.key.toLowerCase());
           if (match) {
             e.preventDefault();
-            match.click();
+            const wantHelp = e.ctrlKey || e.metaKey || ctrlActive;
+            if (ctrlActive) setCtrl(false);
+            if (wantHelp) {
+              if (typeof match.openHelp === 'function') {
+                const matchIdx = modalNav.items.indexOf(match);
+                if (matchIdx >= 0) {
+                  modalNav.focusIndex = matchIdx;
+                  updateModalFocus();
+                }
+                match.openHelp();
+              }
+            } else {
+              match.click();
+            }
             return;
           }
         }
@@ -4579,7 +5250,13 @@
         if (e.key === 'ArrowUp') { e.preventDefault(); moveModalFocus('up'); return; }
         if (e.key === 'ArrowRight') { e.preventDefault(); moveModalFocus('right'); return; }
         if (e.key === 'ArrowLeft') { e.preventDefault(); moveModalFocus('left'); return; }
-        if (e.key === 'Enter') { e.preventDefault(); activateFocusedModalItem(); return; }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const wantHelp = e.ctrlKey || e.metaKey || ctrlActive;
+          if (ctrlActive) setCtrl(false);
+          activateFocusedModalItem(wantHelp);
+          return;
+        }
         if (e.key === 'Escape') { e.preventDefault(); handleHardwareKey('esc'); return; }
         return;
       }

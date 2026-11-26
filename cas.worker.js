@@ -7,7 +7,7 @@ let lastAns = '0';
 let lastAnsLatex = '0';
 let currentAngleMode = 'RAD';
 const userVariables = new Map();
-const WORKER_VERSION = 'v1.43.3';
+const WORKER_VERSION = 'v1.44';
 
 self.postMessage({
   type: 'WORKER_INIT',
