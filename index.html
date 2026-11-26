@@ -622,11 +622,6 @@
       overflow: visible;
     }
 
-    .sec-label.white-sec {
-      color: #d8dee9;
-      font-weight: 600;
-    }
-
     .hw-btn {
       width: 100%;
       height: clamp(27px, 3.65vh, 35px);
@@ -892,7 +887,7 @@
                 <circle cx="10" cy="14.2" r="1" fill="currentColor" stroke="none"/>
                 <circle cx="13" cy="14.2" r="1" fill="currentColor" stroke="none"/>
               </svg>
-              Scratchpad <span id="app-version" class="version-tag">v1.42</span>
+              Scratchpad <span id="app-version" class="version-tag">v1.43</span>
             </span>
             <span id="angle-indicator" class="status-pill" title="Alternar Radianes (RAD) / Grados (DEG)">RAD</span>
             <span class="status-pill">AUTO</span>
@@ -944,7 +939,7 @@
             <button class="hw-btn" data-key="esc">esc</button>
           </div>
           <div class="key-slot">
-            <span class="sec-label white-sec">save</span>
+            <span class="sec-label">save</span>
             <button class="hw-btn" data-key="scratchpad" title="Scratchpad">
               <svg width="19" height="16" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
                 <path d="M5.5 3.5L3 16.5h6" stroke-opacity="0.85"/>
@@ -1037,7 +1032,7 @@
 
         <div class="nav-side-col">
           <div class="key-slot">
-            <span class="sec-label white-sec">off</span>
+            <span class="sec-label">off</span>
             <button class="hw-btn" data-key="on">
               <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round">
                 <path d="M2 8.8L9 2.8l7 6"/>
@@ -1048,7 +1043,7 @@
             </button>
           </div>
           <div class="key-slot">
-            <span class="sec-label white-sec">+ page</span>
+            <span class="sec-label">+ page</span>
             <button class="hw-btn" data-key="doc">
               <span>doc</span>
               <svg width="7" height="6" viewBox="0 0 8 6" fill="currentColor"><polygon points="1,1 7,1 4,5"/></svg>
@@ -1076,7 +1071,7 @@
           <button class="hw-btn ctrl-key" id="btn-ctrl" data-key="ctrl">ctrl</button>
         </div>
         <div class="key-slot">
-          <span class="sec-label white-sec">CAPS</span>
+          <span class="sec-label">CAPS</span>
           <button class="hw-btn" id="btn-shift" data-key="shift">
             <svg width="11" height="12" viewBox="0 0 14 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
               <polygon points="7,1.5 12.5,7.5 9.3,7.5 9.3,13.2 4.7,13.2 4.7,7.5 1.5,7.5"/>
@@ -1096,7 +1091,7 @@
           <button class="hw-btn" data-key="var">var</button>
         </div>
         <div class="key-slot">
-          <span class="sec-label white-sec">clear</span>
+          <span class="sec-label">clear</span>
           <button class="hw-btn" data-key="del" style="flex-direction:column;gap:0px;line-height:0.95;">
             <span style="font-size:0.7rem;">del</span>
             <svg width="14" height="6" viewBox="0 0 16 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1119,7 +1114,7 @@
             <button class="hw-btn" data-key="equals" style="font-size:0.95rem;">=</button>
           </div>
           <div class="key-slot">
-            <span class="sec-label white-sec">
+            <span class="sec-label">
               <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3">
                 <circle cx="7" cy="7" r="5.8"/>
                 <path d="M5.5 5.3a1.5 1.4 0 1 1 2.2 1.2c-.5.3-.7.6-.7 1.2"/>
@@ -1228,7 +1223,7 @@
             <button class="hw-btn num-key" data-digit="0">0</button>
           </div>
           <div class="key-slot">
-            <span class="sec-label white-sec">capture</span>
+            <span class="sec-label">capture</span>
             <button class="hw-btn num-key" data-key="dot">•</button>
           </div>
           <div class="key-slot">
@@ -1403,7 +1398,7 @@
 
   <script>
     // Versión actual de la aplicación (v1.xx para correcciones y mejoras incrementales)
-    const APP_VERSION = 'v1.42';
+    const APP_VERSION = 'v1.43';
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
